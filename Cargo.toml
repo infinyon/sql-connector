@@ -1,0 +1,10 @@
+[workspace]
+members = [
+    "crates/sql-sink"
+]
+resolver = "2"
+
+[profile.release-lto]
+inherits = "release"
+lto = true
+
