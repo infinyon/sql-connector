@@ -1,6 +1,7 @@
 [workspace]
 members = [
-    "crates/sql-sink"
+    "crates/sql-sink",
+    "crates/fluvio-model-sql",
 ]
 resolver = "2"
 

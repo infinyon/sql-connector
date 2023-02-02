@@ -1,0 +1,23 @@
+[package]
+name = "sql-sink"
+group = "fluvio"
+version = "0.2.0"
+apiVersion = "0.2.0"
+fluvio = "0.10.0"
+description = "SQL sink connector"
+license = "Apache-2.0"
+
+[direction]
+dest = true
+
+[deployment]
+binary = "sql-sink"
+
+[custom]
+name = "sql"
+required = ["url"]
+
+[custom.properties.url]
+title = "Url"
+description = "SQL connection url"
+type = "string"
