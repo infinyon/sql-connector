@@ -23,4 +23,4 @@ uuid = { version = "1.3", default-features = false }
 
 fluvio-model-sql = { path = "../fluvio-model-sql" }
 fluvio = { git = "https://github.com/infinyon/fluvio", tag = "v0.10.4"}
-fluvio-connector-common = { git = "https://github.com/infinyon/fluvio", tag = "v0.10.4", features = ["derive"]}
+fluvio-connector-common = { git = "https://github.com/infinyon/fluvio", tag = "v0.10.5", features = ["derive"]}
