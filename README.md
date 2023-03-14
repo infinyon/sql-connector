@@ -81,19 +81,20 @@ sql:
 transforms:
   - uses: infinyon/json-sql
     with:
-      table: "topic_message"
-      map-columns:
-        "device_id":
-          json-key: "device.device_id"
-          value:
-            type: "int"
-            default: "0"
-            required: true
-        "record":
-          json-key: "$"
-          value:
-            type: "jsonb"
-            required: true
+      mapping:
+        table: "topic_message"
+        map-columns:
+          "device_id":
+            json-key: "device.device_id"
+            value:
+              type: "int"
+              default: "0"
+              required: true
+          "record":
+            json-key: "$"
+            value:
+              type: "jsonb"
+              required: true
 ```
 
 You can use Fluvio `cdk` tool to deploy the connector:
