@@ -1,12 +1,13 @@
 ---
 package_format_version: "0.2"
 name: sql-sink
-version: 0.1.0
-group: fluvio
+version: 0.1.1
+group: infinyon
 description: HTTP source connector
-license: e.g. Apache2
-visibility: private
+license: Apache2
+visibility: public
 manifest:
   - Connector.toml
   - ../../target/release/sql-sink  
+  - ../../README.md
 
