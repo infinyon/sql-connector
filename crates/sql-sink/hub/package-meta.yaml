@@ -7,7 +7,7 @@ description: HTTP source connector
 license: Apache2
 visibility: public
 manifest:
-  - Connector.toml
-  - ../../target/release/sql-sink  
-  - ../../README.md
+  - ../Connector.toml
+  - ../../../target/release/sql-sink  
+  - ../../../README.md
 
