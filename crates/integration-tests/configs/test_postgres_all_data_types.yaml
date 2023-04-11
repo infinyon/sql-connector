@@ -1,0 +1,9 @@
+meta:
+  name: test-postgres-all-data-types
+  type: sql-sink
+  version: latest
+  topic: test-postgres-all-data-types
+  create-topic: true
+sql:
+  url: "postgresql://pguser:passpass@127.0.0.1:5432/pguser"
+
