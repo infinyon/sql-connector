@@ -2,6 +2,7 @@
 members = [
     "crates/sql-sink",
     "crates/fluvio-model-sql",
+    "crates/integration-tests",
 ]
 resolver = "2"
 
