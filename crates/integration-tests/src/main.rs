@@ -13,21 +13,22 @@ use bollard::{
     service::{HostConfig, PortBinding},
     Docker,
 };
-use fluvio::{metadata::topic::TopicSpec, Fluvio, RecordKey};
-use fluvio_future::retry::{retry, ExponentialBackoff};
-use fluvio_model_sql::{Operation, Type, Value};
 use futures_util::stream::TryStreamExt;
 use log::{debug, info};
-
 use serde::Deserialize;
 use serde_json::json;
 use sqlx::{postgres::PgRow, Connection, FromRow, PgConnection};
+
+use fluvio::{metadata::topic::TopicSpec, Fluvio, RecordKey};
+use fluvio_future::retry::{retry, ExponentialBackoff};
+use fluvio_model_sql::{Operation, Type, Value};
 
 const POSTGRES_IMAGE: &str = "postgres:15.2";
 const POSTGRES_HOST_PORT: &str = "5432";
 const POSTGRES_PASSWORD: &str = "passpass";
 const POSTGRES_USER: &str = "pguser";
 const POSTGRES_DB: &str = POSTGRES_USER;
+const JSON_SQL_PACKAGE_NAME: &str = "infinyon/json-sql@0.1.0";
 
 #[async_std::main]
 async fn main() -> Result<()> {
@@ -159,7 +160,7 @@ async fn test_postgres_with_json_sql_transformations(
     .await
     .context(format!("unable to create table {table})"))?;
 
-    fluvio_download_smartmodule("infinyon/json-sql@0.1.0")?;
+    fluvio_download_smartmodule(JSON_SQL_PACKAGE_NAME)?;
     cdk_deploy_start(&config_path, None).await?;
     let connector_name = &config.meta.name;
     let connector_status = cdk_deploy_status(connector_name)?;
