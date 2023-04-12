@@ -1,8 +1,7 @@
-use fluvio_connector_common::connector;
-use url::Url;
+use fluvio_connector_common::{connector, secret::SecretString};
 
 #[derive(Debug)]
 #[connector(config, name = "sql")]
 pub(crate) struct SqlConfig {
-    pub url: Url,
+    pub url: SecretString,
 }
