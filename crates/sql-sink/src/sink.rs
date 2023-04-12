@@ -1,4 +1,4 @@
-use anyhow::Result;
+use anyhow::{Context, Result};
 
 use async_trait::async_trait;
 
@@ -16,7 +16,8 @@ pub(crate) struct SqlSink {
 
 impl SqlSink {
     pub(crate) fn new(config: &SqlConfig) -> Result<Self> {
-        let url = config.url.clone();
+        let url = Url::parse(&config.url.resolve()?).context("unable to parse sql url")?;
+
         Ok(Self { url })
     }
 }
