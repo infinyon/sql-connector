@@ -6,6 +6,10 @@ concurrency:
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - staging
+      - trying
   pull_request:
     branches: [main]
     paths:
@@ -99,3 +103,12 @@ jobs:
         timeout-minutes: 20
         run: make integration_tests
 
+  done:
+    name: Done
+    needs:
+      - check
+      - integration_tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Done
+        run: echo "Done!"
