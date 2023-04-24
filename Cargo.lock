@@ -1099,7 +1099,7 @@ dependencies = [
  "dirs 5.0.0",
  "event-listener",
  "fluvio-compression",
- "fluvio-future",
+ "fluvio-future 0.4.5",
  "fluvio-protocol",
  "fluvio-sc-schema",
  "fluvio-smartengine",
@@ -1144,7 +1144,7 @@ dependencies = [
  "fluvio",
  "fluvio-connector-derive",
  "fluvio-connector-package",
- "fluvio-future",
+ "fluvio-future 0.4.5",
  "fluvio-sc-schema",
  "fluvio-smartengine",
  "futures",
@@ -1194,7 +1194,7 @@ dependencies = [
  "base64 0.21.0",
  "bytes",
  "flate2",
- "fluvio-future",
+ "fluvio-future 0.4.5",
  "fluvio-protocol",
  "fluvio-stream-model",
  "fluvio-types",
@@ -1232,6 +1232,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "fluvio-future"
+version = "0.5.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a5f2d572470f98b25383ffe78d9c3fba2b986d9891efd78808025397e54eb1ec"
+dependencies = [
+ "fluvio-wasm-timer",
+ "log",
+ "thiserror",
+ "tracing",
+ "ws_stream_wasm",
+]
+
+[[package]]
 name = "fluvio-model-sql"
 version = "0.0.1"
 dependencies = [
@@ -1248,7 +1261,7 @@ dependencies = [
  "crc32c",
  "eyre",
  "fluvio-compression",
- "fluvio-future",
+ "fluvio-future 0.4.5",
  "fluvio-protocol-derive",
  "fluvio-types",
  "flv-util",
@@ -1294,7 +1307,7 @@ dependencies = [
  "anyhow",
  "cfg-if",
  "derive_builder",
- "fluvio-future",
+ "fluvio-future 0.4.5",
  "fluvio-protocol",
  "fluvio-smartmodule",
  "serde",
@@ -1339,7 +1352,7 @@ dependencies = [
  "bytes",
  "cfg-if",
  "event-listener",
- "fluvio-future",
+ "fluvio-future 0.4.5",
  "fluvio-protocol",
  "futures-util",
  "once_cell",
@@ -1359,7 +1372,7 @@ dependencies = [
  "bytes",
  "educe",
  "flate2",
- "fluvio-future",
+ "fluvio-future 0.4.5",
  "fluvio-protocol",
  "fluvio-smartmodule",
  "fluvio-types",
@@ -1890,7 +1903,7 @@ dependencies = [
  "chrono",
  "env_logger",
  "fluvio",
- "fluvio-future",
+ "fluvio-future 0.5.1",
  "fluvio-model-sql",
  "futures-util",
  "log",
