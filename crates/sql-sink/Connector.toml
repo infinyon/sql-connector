@@ -1,6 +1,6 @@
 [package]
 name = "sql-sink"
-group = "fluvio"
+group = "infinyon"
 version = "0.2.0"
 apiVersion = "0.2.0"
 fluvio = "0.10.0"
