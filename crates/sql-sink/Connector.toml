@@ -6,6 +6,7 @@ apiVersion = "0.2.0"
 fluvio = "0.10.0"
 description = "SQL sink connector"
 license = "Apache-2.0"
+visibility = "public"
 
 [direction]
 dest = true
