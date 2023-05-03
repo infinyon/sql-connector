@@ -60,16 +60,16 @@ sql:
 The connector can use secrets in order to hide sensitive information.
 
 ```yaml
+apiVersion: 0.1.0
 meta:
   version: 0.1.1
   name: my-sql-connector
   type: sql-sink
   topic: sql-topic
-  create-topic: true
+  secrets:
+    - name: DATABASE_URL
 sql:
-  url: 
-    secret:
-     name: DATABASE_URL
+  url: ${{ secrets.DATABASE_URL }}
 ```
 ## Usage Example
 Let's look at the example of the connector with one transformation named [infinyon/json-sql](https://github.com/infinyon/fluvio-connectors/blob/main/smartmodules/json-sql/README.md). The transformation takes
