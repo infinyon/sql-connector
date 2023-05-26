@@ -46,6 +46,9 @@ impl Db {
             Operation::Insert { table, values } => {
                 self.insert(table, values).await?;
             }
+            Operation::Upsert { table, values } => {
+                self.upsert(table, values).await?;
+            }
         }
         Ok(())
     }
@@ -61,6 +64,17 @@ impl Db {
         }
     }
 
+    async fn insert(&mut self, table: String, values: Vec<Value>) -> anyhow::Result<()> {
+        match self {
+            Db::Postgres(conn) => {
+                do_upsert::<Postgres, &mut PgConnection, Self>(conn.as_mut(), table, values).await
+            }
+            Db::Sqlite(conn) => {
+                do_upsert::<Sqlite, &mut SqliteConnection, Self>(conn.as_mut(), table, values).await
+            }
+        }
+    }
+
     pub fn kind(&self) -> &'static str {
         match self {
             Db::Postgres(_) => "postgres",
@@ -69,15 +83,15 @@ impl Db {
     }
 }
 
-async fn do_insert<'c, DB, E, I>(conn: E, table: String, values: Vec<Value>) -> anyhow::Result<()>
+async fn do_upsert<'c, DB, E, I>(conn: E, table: String, values: Vec<Value>) -> anyhow::Result<()>
 where
     DB: Database,
     for<'q> <DB as HasArguments<'q>>::Arguments: IntoArguments<'q, DB>,
     E: Executor<'c, Database = DB>,
-    I: Insert<DB>,
+    I: Target<DB>,
 {
-    let sql = I::query(table.as_str(), values.as_slice());
-    debug!(sql, "sending");
+    let sql = I::upsert_query(table.as_str(), values.as_slice());
+    debug!(sql, "sending upsert");
     let mut query = sqlx::query(&sql);
     for value in values {
         query = match I::bind_value(query, &value) {
@@ -92,8 +106,32 @@ where
     Ok(())
 }
 
-trait Insert<DB: Database> {
-    fn query(table: &str, values: &[Value]) -> String;
+async fn do_insert<'c, DB, E, I>(conn: E, table: String, values: Vec<Value>) -> anyhow::Result<()>
+where
+    DB: Database,
+    for<'q> <DB as HasArguments<'q>>::Arguments: IntoArguments<'q, DB>,
+    E: Executor<'c, Database = DB>,
+    I: Target<DB>,
+{
+    let sql = I::insert_query(table.as_str(), values.as_slice());
+    debug!(sql, "sending insert");
+    let mut query = sqlx::query(&sql);
+    for value in values {
+        query = match I::bind_value(query, &value) {
+            Ok(q) => q,
+            Err(err) => {
+                error!("Unable to bind {:?}. Reason: {:?}", value, err);
+                return Err(err);
+            }
+        }
+    }
+    query.execute(conn).await?;
+    Ok(())
+}
+
+trait Target<DB: Database> {
+    fn insert_query(table: &str, values: &[Value]) -> String;
+    fn upsert_query(table: &str, values: &[Value], id_columns: &[String]) -> String;
 
     fn bind_value<'a>(
         query: Query<'a, DB, <DB as HasArguments<'a>>::Arguments>,
@@ -101,8 +139,14 @@ trait Insert<DB: Database> {
     ) -> anyhow::Result<Query<'a, DB, <DB as HasArguments<'a>>::Arguments>>;
 }
 
-impl Insert<Postgres> for Db {
-    fn query(table: &str, values: &[Value]) -> String {
+impl Target<Postgres> for Db {
+    fn insert_query(table: &str, values: &[Value]) -> String {
+        let columns = values.iter().map(|v| v.column.as_str()).join(",");
+        let values_clause = (1..=values.len()).map(|i| format!("${i}")).join(",");
+        format!("INSERT INTO {table} ({columns}) VALUES ({values_clause})")
+    }
+
+    fn upsert_query(table: &str, values: &[Value]) -> String {
         let columns = values.iter().map(|v| v.column.as_str()).join(",");
         let values_clause = (1..=values.len()).map(|i| format!("${i}")).join(",");
         format!("INSERT INTO {table} ({columns}) VALUES ({values_clause})")
@@ -136,8 +180,14 @@ impl Insert<Postgres> for Db {
     }
 }
 
-impl Insert<Sqlite> for Db {
-    fn query(table: &str, values: &[Value]) -> String {
+impl Target<Sqlite> for Db {
+    fn insert_query(table: &str, values: &[Value]) -> String {
+        let columns = values.iter().map(|v| v.column.as_str()).join(",");
+        let values_clause = (1..=values.len()).map(|_| "?").join(",");
+        format!("INSERT INTO {table} ({columns}) VALUES ({values_clause})")
+    }
+
+    fn upsert_query(table: &str, values: &[Value]) -> String {
         let columns = values.iter().map(|v| v.column.as_str()).join(",");
         let values_clause = (1..=values.len()).map(|_| "?").join(",");
         format!("INSERT INTO {table} ({columns}) VALUES ({values_clause})")

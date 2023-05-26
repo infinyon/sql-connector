@@ -5,7 +5,7 @@ use serde::Serialize;
 #[derive(Debug, Serialize, Deserialize, Eq, PartialEq)]
 pub enum Operation {
     Insert { table: String, values: Vec<Value> },
-    Upsert { table: String, values: Vec<Value> },
+    Upsert { table: String, values: Vec<Value>, id_columns: Vec<String> },
 }
 
 /// Value with SQL column name and supported SQL type.
