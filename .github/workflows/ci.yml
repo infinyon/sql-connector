@@ -107,12 +107,8 @@ jobs:
           sleep 3
           echo foo | fluvio produce foobar
           fluvio consume foobar -B -d
-      - name: Login to Fluvio Cloud
-        run: |
-          fluvio cloud login --email ${{ secrets.DEV_HUB_USER_EMAIL }} --password ${{ secrets.DEV_HUB_USER_PASSWORD }} --remote ${{ vars.DEV_CLOUD_URL }}
-          fluvio profile switch k3d-fluvio
       - name: Install Fluvio CDK
-        run: fluvio install cdk
+        run: fluvio install cdk --develop
       - name: Run Integration Test
         timeout-minutes: 20
         run: make integration_tests
