@@ -281,145 +281,46 @@ mod tests {
     use chrono::{NaiveDateTime, Utc};
     use fluvio_connector_common::future::init_logger;
     use fluvio_model_sql::Type;
-    use sqlx::{Executor, Row};
+    use sqlx::{any::AnyRow, Executor, Row};
     use uuid::Uuid;
 
-    #[ignore]
-    #[async_std::test]
-    async fn test_data_types_postgres() -> anyhow::Result<()> {
-        init_logger();
+    const CREATE_TABLE: &str = "
+    CREATE TABLE IF NOT EXISTS big_table (
+        json_col TEXT,
+        bool_col BOOLEAN,
+        char_col INTEGER,
+        smallint_col INTEGER,
+        int_col INTEGER,
+        big_int_col BIGINT,
+        text_col TEXT,
+        bytes_col BLOB,
+        float_col REAL,
+        double_col REAL,
+        numeric_col REAL,
+        timestamp_col TIMESTAMP,
+        uuid_col TEXT
+    );";
 
-        let url = "postgresql://myusername:mypassword@localhost:5432/myusername";
+    const SELECT: &str = "
+    SELECT 
+        json_col,
+        bool_col,
+        char_col,
+        smallint_col,
+        int_col,
+        big_int_col,
+        text_col,
+        bytes_col,
+        float_col,
+        double_col,
+        numeric_col,
+        timestamp_col,
+        uuid_col
+    FROM big_table;
+    ";
 
-        //given
-        let mut db = Db::connect(url).await?;
-
-        db.connection
-            .as_postgres_conn()
-            .unwrap()
-            .execute(
-                r#"CREATE TABLE IF NOT EXISTS big_table (
-            json_col JSONB,
-            bool_col BOOL,
-            char_col CHAR,
-            smallint_col SMALLINT,
-            int_col INT,
-            text_col TEXT,
-            bytes_col BYTEA,
-            float_col FLOAT,
-            double_col DOUBLE PRECISION,
-            numeric_col NUMERIC,
-            timestamp_col TIMESTAMP,
-            uuid_col UUID
-            );"#,
-            )
-            .await?;
-
-        let operation = Operation::Insert(Insert {
-            table: "big_table".to_string(),
-            values: vec![
-                Value {
-                    column: "json_col".to_string(),
-                    raw_value: "{\"json_key\":\"json_value\"}".to_string(),
-                    type_: Type::Json,
-                },
-                Value {
-                    column: "bool_col".to_string(),
-                    raw_value: "true".to_string(),
-                    type_: Type::Bool,
-                },
-                Value {
-                    column: "char_col".to_string(),
-                    raw_value: "126".to_string(),
-                    type_: Type::Char,
-                },
-                Value {
-                    column: "smallint_col".to_string(),
-                    raw_value: "12".to_string(),
-                    type_: Type::SmallInt,
-                },
-                Value {
-                    column: "int_col".to_string(),
-                    raw_value: "40".to_string(),
-                    type_: Type::Int,
-                },
-                Value {
-                    column: "text_col".to_string(),
-                    raw_value: "some text".to_string(),
-                    type_: Type::Text,
-                },
-                Value {
-                    column: "bytes_col".to_string(),
-                    raw_value: "some bytes".to_string(),
-                    type_: Type::Bytes,
-                },
-                Value {
-                    column: "float_col".to_string(),
-                    raw_value: "3.123".to_string(),
-                    type_: Type::Float,
-                },
-                Value {
-                    column: "double_col".to_string(),
-                    raw_value: "3.333333333".to_string(),
-                    type_: Type::DoublePrecision,
-                },
-                Value {
-                    column: "numeric_col".to_string(),
-                    raw_value: Decimal::TEN.to_string(),
-                    type_: Type::Numeric,
-                },
-                Value {
-                    column: "timestamp_col".to_string(),
-                    raw_value: Utc::now().naive_local().to_string(),
-                    type_: Type::Timestamp,
-                },
-                Value {
-                    column: "uuid_col".to_string(),
-                    raw_value: "D9C64A1B-9527-4E8C-BE74-D0208A15FF01".to_string(),
-                    type_: Type::Uuid,
-                },
-            ],
-        });
-
-        //when
-        db.execute(&operation).await?;
-
-        //then
-        Ok(())
-    }
-
-    #[async_std::test]
-    async fn test_data_types_sqlite() -> anyhow::Result<()> {
-        init_logger();
-
-        let url = "sqlite::memory:";
-
-        //given
-        let mut db = Db::connect(url).await?;
-
-        db.connection
-            .as_sqlite_conn()
-            .unwrap()
-            .execute(
-                r#"CREATE TABLE IF NOT EXISTS big_table (
-            json_col TEXT,
-            bool_col BOOLEAN,
-            char_col INTEGER,
-            smallint_col INTEGER,
-            int_col INTEGER,
-            big_int_col BIGINT,
-            text_col TEXT,
-            bytes_col BLOB,
-            float_col REAL,
-            double_col REAL,
-            numeric_col REAL,
-            timestamp_col TIMESTAMP,
-            uuid_col TEXT
-            );"#,
-            )
-            .await?;
-
-        let operation = Operation::Insert(Insert {
+    fn make_insert() -> Insert {
+        Insert {
             table: "big_table".to_string(),
             values: vec![
                 Value {
@@ -449,18 +350,8 @@ mod tests {
                 },
                 Value {
                     column: "big_int_col".to_string(),
-                    raw_value: "312".to_string(),
+                    raw_value: "401".to_string(),
                     type_: Type::BigInt,
-                },
-                Value {
-                    column: "text_col".to_string(),
-                    raw_value: "some text".to_string(),
-                    type_: Type::Text,
-                },
-                Value {
-                    column: "bytes_col".to_string(),
-                    raw_value: "some bytes".to_string(),
-                    type_: Type::Bytes,
                 },
                 Value {
                     column: "float_col".to_string(),
@@ -473,61 +364,49 @@ mod tests {
                     type_: Type::DoublePrecision,
                 },
                 Value {
+                    column: "text_col".to_string(),
+                    raw_value: "some text".to_string(),
+                    type_: Type::Text,
+                },
+                Value {
+                    column: "bytes_col".to_string(),
+                    raw_value: "some bytes".to_string(),
+                    type_: Type::Bytes,
+                },
+                Value {
                     column: "numeric_col".to_string(),
                     raw_value: Decimal::TEN.to_string(),
                     type_: Type::Numeric,
                 },
                 Value {
                     column: "timestamp_col".to_string(),
-                    raw_value: Utc::now().naive_local().to_string(),
+                    raw_value: chrono::NaiveDateTime::MIN.to_string(),
                     type_: Type::Timestamp,
                 },
                 Value {
                     column: "uuid_col".to_string(),
-                    raw_value: "d9c64a1b-9527-4e8c-be74-d0208a15ff01".to_string(),
+                    raw_value: Uuid::from_str("f0841d15-133a-48a7-b48c-ce1ba72f8c94")
+                        .unwrap()
+                        .to_string(),
                     type_: Type::Uuid,
                 },
             ],
-        });
+        }
+    }
 
-        //when
-        db.execute(&operation).await?;
-
-        //then
-        let row = db
-            .connection
-            .as_sqlite_conn()
-            .unwrap()
-            .fetch_one(
-                r#"SELECT 
-                json_col,
-                bool_col,
-                char_col,
-                smallint_col,
-                int_col,
-                big_int_col,
-                text_col,
-                bytes_col,
-                float_col,
-                double_col,
-                numeric_col,
-                timestamp_col,
-                uuid_col
-                 FROM big_table"#,
-            )
-            .await?;
+    fn check_row(row: AnyRow) {
         let json_col: String = row.get(0);
         assert_eq!(json_col, "{\"json_key\":\"json_value\"}".to_string());
         let bool_col: bool = row.get(1);
         assert!(bool_col);
-        let char_col: i8 = row.get(2);
+        let char_col: i32 = row.get(2);
         assert_eq!(char_col, 126);
         let small_int_col: i32 = row.get(3);
         assert_eq!(small_int_col, 12);
         let int_col: i32 = row.get(4);
         assert_eq!(int_col, 40);
         let big_int_col: i64 = row.get(5);
-        assert_eq!(big_int_col, 312);
+        assert_eq!(big_int_col, 401);
         let text_col: String = row.get(6);
         assert_eq!(text_col, "some text");
         let bytes_col: Vec<u8> = row.get(7);
@@ -538,12 +417,77 @@ mod tests {
         assert_eq!(double, 3.333333333);
         let numeric: f64 = row.get(10);
         assert_eq!(numeric, 10f64);
-        let _timestamp: NaiveDateTime = row.get(11);
-        let uuid: Uuid = row.get(12);
+        let timestamp: NaiveDateTime = row.get(11);
+        assert_eq!(timestamp, chrono::NaiveDateTime::MIN);
+        let uuid: Vec<u8> = row.get(12);
+        let uuid = Uuid::from_slice(&uuid).unwrap();
         assert_eq!(
-            uuid.to_string(),
-            "d9c64a1b-9527-4e8c-be74-d0208a15ff01".to_string()
+            uuid,
+            Uuid::from_str("f0841d15-133a-48a7-b48c-ce1ba72f8c94").unwrap()
         );
+    }
+
+    #[ignore]
+    #[async_std::test]
+    async fn test_data_types_postgres() -> anyhow::Result<()> {
+        init_logger();
+
+        let url = "postgresql://myusername:mypassword@localhost:5432/myusername";
+
+        //given
+        let mut db = Db::connect(url).await?;
+
+        db.connection
+            .as_postgres_conn()
+            .unwrap()
+            .execute(CREATE_TABLE)
+            .await?;
+
+        let operation = Operation::Insert(make_insert());
+
+        //when
+        db.execute(&operation).await?;
+
+        //then
+        let row = db
+            .connection
+            .as_postgres_conn()
+            .unwrap()
+            .fetch_one(SELECT)
+            .await?;
+        check_row(row.into());
+
+        Ok(())
+    }
+
+    #[async_std::test]
+    async fn test_data_types_sqlite() -> anyhow::Result<()> {
+        init_logger();
+
+        let url = "sqlite::memory:";
+
+        //given
+        let mut db = Db::connect(url).await?;
+
+        db.connection
+            .as_sqlite_conn()
+            .unwrap()
+            .execute(CREATE_TABLE)
+            .await?;
+
+        let operation = Operation::Insert(make_insert());
+
+        //when
+        db.execute(&operation).await?;
+
+        //then
+        let row = db
+            .connection
+            .as_sqlite_conn()
+            .unwrap()
+            .fetch_one(SELECT)
+            .await?;
+        check_row(row.into());
 
         Ok(())
     }
@@ -603,10 +547,17 @@ mod tests {
         ];
 
         //when
-        let query = build_upsert_query_postgres(&Upsert { table, values, uniq_idx: "my_idx".into() });
+        let query = build_upsert_query_postgres(&Upsert {
+            table,
+            values,
+            uniq_idx: "my_idx".into(),
+        });
 
         //then
-        assert_eq!(query, "INSERT INTO test_table (col1,col2) VALUES ($1,$2) ON CONFLICT(my_idx) DO UPDATE");
+        assert_eq!(
+            query,
+            "INSERT INTO test_table (col1,col2) VALUES ($1,$2) ON CONFLICT(my_idx) DO UPDATE"
+        );
     }
 
     #[test]
@@ -651,9 +602,16 @@ mod tests {
         ];
 
         //when
-        let query = build_upsert_query_sqlite(&Upsert { table, values, uniq_idx: "my_idx".into() });
+        let query = build_upsert_query_sqlite(&Upsert {
+            table,
+            values,
+            uniq_idx: "my_idx".into(),
+        });
 
         //then
-        assert_eq!(query, "INSERT INTO test_table (col1,col2) VALUES (?,?) ON CONFLICT(my_idx) DO UPDATE");
+        assert_eq!(
+            query,
+            "INSERT INTO test_table (col1,col2) VALUES (?,?) ON CONFLICT(my_idx) DO UPDATE"
+        );
     }
 }
