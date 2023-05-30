@@ -20,7 +20,7 @@ pub struct Insert {
 pub struct Upsert {
     pub table: String,
     pub values: Vec<Value>,
-    pub id_columns: Vec<String>,
+    pub uniq_idx: String,
 }
 
 /// Value with SQL column name and supported SQL type.

@@ -1,7 +1,7 @@
 use anyhow::anyhow;
 use async_trait::async_trait;
 use fluvio_connector_common::tracing::{debug, error};
-use fluvio_model_sql::{Insert, Operation, Type, Value};
+use fluvio_model_sql::{Insert, Operation, Type, Upsert, Value};
 use itertools::Itertools;
 use rust_decimal::Decimal;
 use sqlx::any::{AnyConnectOptions, AnyKind};
@@ -19,9 +19,14 @@ trait DbConnection {
 
     async fn insert(&mut self, insert: &Insert) -> anyhow::Result<()>;
 
+    async fn upsert(&mut self, upsert: &Upsert) -> anyhow::Result<()>;
+
+    #[cfg(test)]
     fn as_postgres_conn(&mut self) -> Option<&mut PgConnection> {
         None
     }
+
+    #[cfg(test)]
     fn as_sqlite_conn(&mut self) -> Option<&mut SqliteConnection> {
         None
     }
@@ -53,6 +58,27 @@ impl DbConnection for SqliteConnection {
         Ok(())
     }
 
+    async fn upsert(&mut self, upsert: &Upsert) -> anyhow::Result<()> {
+        let query = build_upsert_query_sqlite(upsert);
+        debug!(query, "sending");
+        let mut query = sqlx::query(&query);
+
+        for value in upsert.values.iter() {
+            query = match sqlite_bind(query, value) {
+                Ok(q) => q,
+                Err(err) => {
+                    error!("Unable to bind {:?}. Reason: {:?}", value, err);
+                    return Err(err);
+                }
+            };
+        }
+
+        self.execute(query).await?;
+
+        Ok(())
+    }
+
+    #[cfg(test)]
     fn as_sqlite_conn(&mut self) -> Option<&mut SqliteConnection> {
         Some(self)
     }
@@ -84,6 +110,27 @@ impl DbConnection for PgConnection {
         Ok(())
     }
 
+    async fn upsert(&mut self, upsert: &Upsert) -> anyhow::Result<()> {
+        let query = build_upsert_query_postgres(upsert);
+        debug!(query, "sending");
+        let mut query = sqlx::query(&query);
+
+        for value in upsert.values.iter() {
+            query = match postgres_bind(query, value) {
+                Ok(q) => q,
+                Err(err) => {
+                    error!("Unable to bind {:?}. Reason: {:?}", value, err);
+                    return Err(err);
+                }
+            };
+        }
+
+        self.execute(query).await?;
+
+        Ok(())
+    }
+
+    #[cfg(test)]
     fn as_postgres_conn(&mut self) -> Option<&mut PgConnection> {
         Some(self)
     }
@@ -99,6 +146,30 @@ fn build_insert_query_postgres(Insert { table, values }: &Insert) -> String {
     let columns = values.iter().map(|v| v.column.as_str()).join(",");
     let values_clause = (1..=values.len()).map(|i| format!("${i}")).join(",");
     format!("INSERT INTO {table} ({columns}) VALUES ({values_clause})")
+}
+
+fn build_upsert_query_sqlite(
+    Upsert {
+        table,
+        values,
+        uniq_idx,
+    }: &Upsert,
+) -> String {
+    let columns = values.iter().map(|v| v.column.as_str()).join(",");
+    let values_clause = (1..=values.len()).map(|_| "?").join(",");
+    format!("INSERT INTO {table} ({columns}) VALUES ({values_clause}) ON CONFLICT({uniq_idx}) DO UPDATE")
+}
+
+fn build_upsert_query_postgres(
+    Upsert {
+        table,
+        values,
+        uniq_idx,
+    }: &Upsert,
+) -> String {
+    let columns = values.iter().map(|v| v.column.as_str()).join(",");
+    let values_clause = (1..=values.len()).map(|i| format!("${i}")).join(",");
+    format!("INSERT INTO {table} ({columns}) VALUES ({values_clause}) ON CONFLICT({uniq_idx}) DO UPDATE")
 }
 
 fn sqlite_bind<'a>(
@@ -186,16 +257,17 @@ impl Db {
 
     pub async fn execute(&mut self, operation: &Operation) -> anyhow::Result<()> {
         match &operation {
-            Operation::Insert(insert) => {
-                self.insert(insert).await?;
-            }
-            Operation::Upsert(_) => todo!(),
+            Operation::Insert(insert) => self.insert(insert).await,
+            Operation::Upsert(upsert) => self.upsert(upsert).await,
         }
-        Ok(())
     }
 
     async fn insert(&mut self, insert: &Insert) -> anyhow::Result<()> {
         self.connection.insert(insert).await
+    }
+
+    async fn upsert(&mut self, upsert: &Upsert) -> anyhow::Result<()> {
+        self.connection.upsert(upsert).await
     }
 
     pub fn kind(&self) -> &'static str {
