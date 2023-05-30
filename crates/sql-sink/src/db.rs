@@ -1,23 +1,141 @@
 use anyhow::anyhow;
+use async_trait::async_trait;
 use fluvio_connector_common::tracing::{debug, error};
-use fluvio_model_sql::{Operation, Type, Value};
+use fluvio_model_sql::{Insert, Operation, Type, Value};
 use itertools::Itertools;
 use rust_decimal::Decimal;
 use sqlx::any::{AnyConnectOptions, AnyKind};
-use sqlx::database::HasArguments;
 use sqlx::postgres::PgArguments;
 use sqlx::query::Query;
 use sqlx::sqlite::SqliteArguments;
-use sqlx::{
-    Connection, Database, Executor, IntoArguments, PgConnection, Postgres, Sqlite, SqliteConnection,
-};
+use sqlx::{Connection, Executor, PgConnection, Postgres, Sqlite, SqliteConnection};
 use std::str::FromStr;
 
 const NAIVE_DATE_TIME_FORMAT: &str = "%Y-%m-%d %H:%M:%S%.f";
 
-pub enum Db {
-    Postgres(Box<PgConnection>),
-    Sqlite(Box<SqliteConnection>),
+#[async_trait]
+trait DbConnection {
+    fn kind(&self) -> &'static str;
+
+    async fn insert(&mut self, insert: &Insert) -> anyhow::Result<()>;
+}
+
+#[async_trait]
+impl DbConnection for SqliteConnection {
+    fn kind(&self) -> &'static str {
+        "sqlite"
+    }
+
+    async fn insert(&mut self, insert: &Insert) -> anyhow::Result<()> {
+        let query = build_insert_query(insert);
+        debug!(query, "sending");
+        let mut query = sqlx::query(&query);
+
+        for value in insert.values.iter() {
+            query = match sqlite_bind(query, value) {
+                Ok(q) => q,
+                Err(err) => {
+                    error!("Unable to bind {:?}. Reason: {:?}", value, err);
+                    return Err(err);
+                }
+            };
+        }
+
+        self.execute(query).await?;
+
+        Ok(())
+    }
+}
+
+#[async_trait]
+impl DbConnection for PgConnection {
+    fn kind(&self) -> &'static str {
+        "postgres"
+    }
+
+    async fn insert(&mut self, insert: &Insert) -> anyhow::Result<()> {
+        let query = build_insert_query(insert);
+        debug!(query, "sending");
+        let mut query = sqlx::query(&query);
+
+        for value in insert.values.iter() {
+            query = match postgres_bind(query, value) {
+                Ok(q) => q,
+                Err(err) => {
+                    error!("Unable to bind {:?}. Reason: {:?}", value, err);
+                    return Err(err);
+                }
+            };
+        }
+
+        self.execute(query).await?;
+
+        Ok(())
+    }
+}
+
+fn build_insert_query(Insert { table, values }: &Insert) -> String {
+    let columns = values.iter().map(|v| v.column.as_str()).join(",");
+    let values_clause = (1..=values.len()).map(|_| "?").join(",");
+    format!("INSERT INTO {table} ({columns}) VALUES ({values_clause})")
+}
+
+fn sqlite_bind<'a>(
+    query: Query<'a, Sqlite, SqliteArguments<'a>>,
+    value: &Value,
+) -> anyhow::Result<Query<'a, Sqlite, SqliteArguments<'a>>> {
+    let query = match value.type_ {
+        Type::Bool => query.bind(bool::from_str(&value.raw_value)?),
+        Type::Char => query.bind(i8::from_str(&value.raw_value)?),
+        Type::SmallInt => query.bind(i16::from_str(&value.raw_value)?),
+        Type::Int => query.bind(i32::from_str(&value.raw_value)?),
+        Type::BigInt => query.bind(i64::from_str(&value.raw_value)?),
+        Type::Float => query.bind(f32::from_str(&value.raw_value)?),
+        Type::DoublePrecision => query.bind(f64::from_str(&value.raw_value)?),
+        Type::Text => query.bind(value.raw_value.clone()),
+        Type::Bytes => query.bind(value.raw_value.as_bytes().to_vec()),
+        Type::Numeric => query.bind(f64::from_str(&value.raw_value)?),
+        Type::Timestamp => query.bind(chrono::NaiveDateTime::parse_from_str(
+            &value.raw_value,
+            NAIVE_DATE_TIME_FORMAT,
+        )?),
+        Type::Date => query.bind(chrono::NaiveDate::from_str(&value.raw_value)?),
+        Type::Time => query.bind(chrono::NaiveTime::from_str(&value.raw_value)?),
+        Type::Uuid => query.bind(uuid::Uuid::from_str(&value.raw_value)?),
+        Type::Json => query.bind(serde_json::Value::from_str(&value.raw_value)?),
+    };
+    Ok(query)
+}
+
+fn postgres_bind<'a>(
+    query: Query<'a, Postgres, PgArguments>,
+    value: &Value,
+) -> anyhow::Result<Query<'a, Postgres, PgArguments>> {
+    let query = match value.type_ {
+        Type::Bool => query.bind(bool::from_str(&value.raw_value)?),
+        Type::Char => query.bind(i8::from_str(&value.raw_value)?),
+        Type::SmallInt => query.bind(i16::from_str(&value.raw_value)?),
+        Type::Int => query.bind(i32::from_str(&value.raw_value)?),
+        Type::BigInt => query.bind(i64::from_str(&value.raw_value)?),
+        Type::Float => query.bind(f32::from_str(&value.raw_value)?),
+        Type::DoublePrecision => query.bind(f64::from_str(&value.raw_value)?),
+        Type::Text => query.bind(value.raw_value.clone()),
+        Type::Bytes => query.bind(value.raw_value.as_bytes().to_vec()),
+        Type::Numeric => query.bind(Decimal::from_str(&value.raw_value)?),
+        Type::Timestamp => query.bind(chrono::NaiveDateTime::parse_from_str(
+            &value.raw_value,
+            NAIVE_DATE_TIME_FORMAT,
+        )?),
+        Type::Date => query.bind(chrono::NaiveDate::from_str(&value.raw_value)?),
+        Type::Time => query.bind(chrono::NaiveTime::from_str(&value.raw_value)?),
+        Type::Uuid => query.bind(uuid::Uuid::from_str(&value.raw_value)?),
+        Type::Json => query.bind(serde_json::Value::from_str(&value.raw_value)?),
+    };
+    Ok(query)
+}
+
+pub struct Db {
+    connection: Box<dyn DbConnection>,
 }
 
 impl Db {
@@ -29,195 +147,38 @@ impl Db {
                     .as_postgres()
                     .ok_or_else(|| anyhow!("invalid postgres connect options"))?;
                 let conn = PgConnection::connect_with(options).await?;
-                Ok(Db::Postgres(Box::new(conn)))
+                Ok(Db {
+                    connection: Box::new(conn),
+                })
             }
             AnyKind::Sqlite => {
                 let options = options
                     .as_sqlite()
                     .ok_or_else(|| anyhow!("invalid sqlite connect options"))?;
                 let conn = SqliteConnection::connect_with(options).await?;
-                Ok(Db::Sqlite(Box::new(conn)))
+                Ok(Db {
+                    connection: Box::new(conn),
+                })
             }
         }
     }
 
-    pub async fn execute(&mut self, operation: Operation) -> anyhow::Result<()> {
-        match operation {
-            Operation::Insert { table, values } => {
-                self.insert(table, values).await?;
+    pub async fn execute(&mut self, operation: &Operation) -> anyhow::Result<()> {
+        match &operation {
+            Operation::Insert(insert) => {
+                self.insert(insert).await?;
             }
-            Operation::Upsert { table, values } => {
-                self.upsert(table, values).await?;
-            }
+            Operation::Upsert(_) => todo!(),
         }
         Ok(())
     }
 
-    async fn insert(&mut self, table: String, values: Vec<Value>) -> anyhow::Result<()> {
-        match self {
-            Db::Postgres(conn) => {
-                do_insert::<Postgres, &mut PgConnection, Self>(conn.as_mut(), table, values).await
-            }
-            Db::Sqlite(conn) => {
-                do_insert::<Sqlite, &mut SqliteConnection, Self>(conn.as_mut(), table, values).await
-            }
-        }
-    }
-
-    async fn insert(&mut self, table: String, values: Vec<Value>) -> anyhow::Result<()> {
-        match self {
-            Db::Postgres(conn) => {
-                do_upsert::<Postgres, &mut PgConnection, Self>(conn.as_mut(), table, values).await
-            }
-            Db::Sqlite(conn) => {
-                do_upsert::<Sqlite, &mut SqliteConnection, Self>(conn.as_mut(), table, values).await
-            }
-        }
+    async fn insert(&mut self, insert: &Insert) -> anyhow::Result<()> {
+        self.connection.insert(insert).await
     }
 
     pub fn kind(&self) -> &'static str {
-        match self {
-            Db::Postgres(_) => "postgres",
-            Db::Sqlite(_) => "sqlite",
-        }
-    }
-}
-
-async fn do_upsert<'c, DB, E, I>(conn: E, table: String, values: Vec<Value>) -> anyhow::Result<()>
-where
-    DB: Database,
-    for<'q> <DB as HasArguments<'q>>::Arguments: IntoArguments<'q, DB>,
-    E: Executor<'c, Database = DB>,
-    I: Target<DB>,
-{
-    let sql = I::upsert_query(table.as_str(), values.as_slice());
-    debug!(sql, "sending upsert");
-    let mut query = sqlx::query(&sql);
-    for value in values {
-        query = match I::bind_value(query, &value) {
-            Ok(q) => q,
-            Err(err) => {
-                error!("Unable to bind {:?}. Reason: {:?}", value, err);
-                return Err(err);
-            }
-        }
-    }
-    query.execute(conn).await?;
-    Ok(())
-}
-
-async fn do_insert<'c, DB, E, I>(conn: E, table: String, values: Vec<Value>) -> anyhow::Result<()>
-where
-    DB: Database,
-    for<'q> <DB as HasArguments<'q>>::Arguments: IntoArguments<'q, DB>,
-    E: Executor<'c, Database = DB>,
-    I: Target<DB>,
-{
-    let sql = I::insert_query(table.as_str(), values.as_slice());
-    debug!(sql, "sending insert");
-    let mut query = sqlx::query(&sql);
-    for value in values {
-        query = match I::bind_value(query, &value) {
-            Ok(q) => q,
-            Err(err) => {
-                error!("Unable to bind {:?}. Reason: {:?}", value, err);
-                return Err(err);
-            }
-        }
-    }
-    query.execute(conn).await?;
-    Ok(())
-}
-
-trait Target<DB: Database> {
-    fn insert_query(table: &str, values: &[Value]) -> String;
-    fn upsert_query(table: &str, values: &[Value], id_columns: &[String]) -> String;
-
-    fn bind_value<'a>(
-        query: Query<'a, DB, <DB as HasArguments<'a>>::Arguments>,
-        value: &Value,
-    ) -> anyhow::Result<Query<'a, DB, <DB as HasArguments<'a>>::Arguments>>;
-}
-
-impl Target<Postgres> for Db {
-    fn insert_query(table: &str, values: &[Value]) -> String {
-        let columns = values.iter().map(|v| v.column.as_str()).join(",");
-        let values_clause = (1..=values.len()).map(|i| format!("${i}")).join(",");
-        format!("INSERT INTO {table} ({columns}) VALUES ({values_clause})")
-    }
-
-    fn upsert_query(table: &str, values: &[Value]) -> String {
-        let columns = values.iter().map(|v| v.column.as_str()).join(",");
-        let values_clause = (1..=values.len()).map(|i| format!("${i}")).join(",");
-        format!("INSERT INTO {table} ({columns}) VALUES ({values_clause})")
-    }
-
-    fn bind_value<'a>(
-        query: Query<'a, Postgres, PgArguments>,
-        value: &Value,
-    ) -> anyhow::Result<Query<'a, Postgres, PgArguments>> {
-        let query = match value.type_ {
-            Type::Bool => query.bind(bool::from_str(&value.raw_value)?),
-            Type::Char => query.bind(i8::from_str(&value.raw_value)?),
-            Type::SmallInt => query.bind(i16::from_str(&value.raw_value)?),
-            Type::Int => query.bind(i32::from_str(&value.raw_value)?),
-            Type::BigInt => query.bind(i64::from_str(&value.raw_value)?),
-            Type::Float => query.bind(f32::from_str(&value.raw_value)?),
-            Type::DoublePrecision => query.bind(f64::from_str(&value.raw_value)?),
-            Type::Text => query.bind(value.raw_value.clone()),
-            Type::Bytes => query.bind(value.raw_value.as_bytes().to_vec()),
-            Type::Numeric => query.bind(Decimal::from_str(&value.raw_value)?),
-            Type::Timestamp => query.bind(chrono::NaiveDateTime::parse_from_str(
-                &value.raw_value,
-                NAIVE_DATE_TIME_FORMAT,
-            )?),
-            Type::Date => query.bind(chrono::NaiveDate::from_str(&value.raw_value)?),
-            Type::Time => query.bind(chrono::NaiveTime::from_str(&value.raw_value)?),
-            Type::Uuid => query.bind(uuid::Uuid::from_str(&value.raw_value)?),
-            Type::Json => query.bind(serde_json::Value::from_str(&value.raw_value)?),
-        };
-        Ok(query)
-    }
-}
-
-impl Target<Sqlite> for Db {
-    fn insert_query(table: &str, values: &[Value]) -> String {
-        let columns = values.iter().map(|v| v.column.as_str()).join(",");
-        let values_clause = (1..=values.len()).map(|_| "?").join(",");
-        format!("INSERT INTO {table} ({columns}) VALUES ({values_clause})")
-    }
-
-    fn upsert_query(table: &str, values: &[Value]) -> String {
-        let columns = values.iter().map(|v| v.column.as_str()).join(",");
-        let values_clause = (1..=values.len()).map(|_| "?").join(",");
-        format!("INSERT INTO {table} ({columns}) VALUES ({values_clause})")
-    }
-
-    fn bind_value<'a>(
-        query: Query<'a, Sqlite, SqliteArguments<'a>>,
-        value: &Value,
-    ) -> anyhow::Result<Query<'a, Sqlite, SqliteArguments<'a>>> {
-        let query = match value.type_ {
-            Type::Bool => query.bind(bool::from_str(&value.raw_value)?),
-            Type::Char => query.bind(i8::from_str(&value.raw_value)?),
-            Type::SmallInt => query.bind(i16::from_str(&value.raw_value)?),
-            Type::Int => query.bind(i32::from_str(&value.raw_value)?),
-            Type::BigInt => query.bind(i64::from_str(&value.raw_value)?),
-            Type::Float => query.bind(f32::from_str(&value.raw_value)?),
-            Type::DoublePrecision => query.bind(f64::from_str(&value.raw_value)?),
-            Type::Text => query.bind(value.raw_value.clone()),
-            Type::Bytes => query.bind(value.raw_value.as_bytes().to_vec()),
-            Type::Numeric => query.bind(f64::from_str(&value.raw_value)?),
-            Type::Timestamp => query.bind(chrono::NaiveDateTime::parse_from_str(
-                &value.raw_value,
-                NAIVE_DATE_TIME_FORMAT,
-            )?),
-            Type::Date => query.bind(chrono::NaiveDate::from_str(&value.raw_value)?),
-            Type::Time => query.bind(chrono::NaiveTime::from_str(&value.raw_value)?),
-            Type::Uuid => query.bind(uuid::Uuid::from_str(&value.raw_value)?),
-            Type::Json => query.bind(serde_json::Value::from_str(&value.raw_value)?),
-        };
-        Ok(query)
+        self.connection.kind()
     }
 }
 
@@ -237,10 +198,8 @@ mod tests {
         let mut db =
             Db::connect("postgresql://myusername:mypassword@localhost:5432/myusername").await?;
 
-        match db {
-            Db::Postgres(ref mut conn) => {
-                conn.execute(
-                    r#"CREATE TABLE IF NOT EXISTS big_table (
+        db.execute(
+            r#"CREATE TABLE IF NOT EXISTS big_table (
             json_col JSONB,
             bool_col BOOL,
             char_col CHAR,
@@ -254,13 +213,10 @@ mod tests {
             timestamp_col TIMESTAMP,
             uuid_col UUID
             );"#,
-                )
-                .await?;
-            }
-            Db::Sqlite(ref mut _conn) => unreachable!(),
-        };
+        )
+        .await?;
 
-        let operation = Operation::Insert {
+        let operation = Operation::Insert(Insert {
             table: "big_table".to_string(),
             values: vec![
                 Value {
@@ -324,7 +280,7 @@ mod tests {
                     type_: Type::Uuid,
                 },
             ],
-        };
+        });
 
         //when
         db.execute(operation).await?;
@@ -339,11 +295,8 @@ mod tests {
         //given
         let mut db = Db::connect("sqlite::memory:").await?;
 
-        match db {
-            Db::Postgres(_) => unreachable!(),
-            Db::Sqlite(ref mut conn) => {
-                conn.execute(
-                    r#"CREATE TABLE IF NOT EXISTS big_table (
+        db.execute(
+            r#"CREATE TABLE IF NOT EXISTS big_table (
             json_col TEXT,
             bool_col BOOLEAN,
             char_col INTEGER,
@@ -358,12 +311,10 @@ mod tests {
             timestamp_col TIMESTAMP,
             uuid_col TEXT
             );"#,
-                )
-                .await?;
-            }
-        };
+        )
+        .await?;
 
-        let operation = Operation::Insert {
+        let operation = Operation::Insert(Insert {
             table: "big_table".to_string(),
             values: vec![
                 Value {
@@ -432,7 +383,7 @@ mod tests {
                     type_: Type::Uuid,
                 },
             ],
-        };
+        });
 
         //when
         db.execute(operation).await?;

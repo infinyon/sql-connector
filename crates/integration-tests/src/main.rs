@@ -21,7 +21,7 @@ use sqlx::{postgres::PgRow, Connection, FromRow, PgConnection};
 
 use fluvio::{metadata::topic::TopicSpec, Fluvio, RecordKey};
 use fluvio_future::retry::{retry, ExponentialBackoff};
-use fluvio_model_sql::{Operation, Type, Value};
+use fluvio_model_sql::{Insert, Operation, Type, Value};
 
 const POSTGRES_IMAGE: &str = "postgres:15.2";
 const POSTGRES_HOST_PORT: &str = "5432";
@@ -377,7 +377,7 @@ fn cdk_deploy_status(connector_name: &str) -> Result<Option<String>> {
 fn generate_records(table: &str, count: usize) -> Result<Vec<String>> {
     let mut result = Vec::with_capacity(count);
     for i in 0..count {
-        let op = Operation::Insert {
+        let op = Operation::Insert(Insert {
             table: table.to_string(),
             values: vec![
                 Value {
@@ -460,7 +460,7 @@ fn generate_records(table: &str, count: usize) -> Result<Vec<String>> {
                     type_: Type::Char,
                 },
             ],
-        };
+        });
         result.push(serde_json::to_string(&op)?);
     }
     Ok(result)

@@ -4,8 +4,23 @@ use serde::Serialize;
 /// Top-level list of supported operations in the SQL model.
 #[derive(Debug, Serialize, Deserialize, Eq, PartialEq)]
 pub enum Operation {
-    Insert { table: String, values: Vec<Value> },
-    Upsert { table: String, values: Vec<Value>, id_columns: Vec<String> },
+    Insert(Insert),
+    Upsert(Upsert),
+}
+
+/// SQL Insert operation
+#[derive(Debug, Serialize, Deserialize, Eq, PartialEq)]
+pub struct Insert {
+    pub table: String,
+    pub values: Vec<Value>,
+}
+
+/// SQL Upsert operation
+#[derive(Debug, Serialize, Deserialize, Eq, PartialEq)]
+pub struct Upsert {
+    pub table: String,
+    pub values: Vec<Value>,
+    pub id_columns: Vec<String>,
 }
 
 /// Value with SQL column name and supported SQL type.
