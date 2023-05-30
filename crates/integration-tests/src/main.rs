@@ -21,7 +21,7 @@ use sqlx::{postgres::PgRow, Connection, FromRow, PgConnection};
 
 use fluvio::{metadata::topic::TopicSpec, Fluvio, RecordKey};
 use fluvio_future::retry::{retry, ExponentialBackoff};
-use fluvio_model_sql::{Insert, Operation, Type, Value};
+use fluvio_model_sql::{Insert, Operation, Type, Upsert, Value};
 
 const POSTGRES_IMAGE: &str = "postgres:15.2";
 const POSTGRES_HOST_PORT: &str = "5432";
@@ -68,47 +68,6 @@ async fn main() -> Result<()> {
 }
 
 async fn test_postgres_all_data_types(fluvio: &Fluvio, pg_conn: &mut PgConnection) -> Result<()> {
-    // given
-    info!("running 'test_postgres_all_data_types' test");
-    let config_path = new_config_path("test_postgres_all_data_types.yaml")?;
-    debug!("{config_path:?}");
-    let config: TestConfig = serde_yaml::from_reader(std::fs::File::open(&config_path)?)?;
-    let table = "test_postgres_all_data_types";
-    sqlx::query(&format!(
-        "CREATE TABLE {} (
-                bool_col bool NOT NULL,
-                smallint_col smallint NOT NULL,
-                int_col int NOT NULL,
-                bigint_col bigint NOT NULL,
-                float_col float4 NOT NULL,
-                double_col float8 NOT NULL,
-                text_col varchar NOT NULL,
-                bytes_col bytea NOT NULL,
-                numeric_col numeric NOT NULL,
-                timestamp_col timestamp NOT NULL,
-                date_col date NOT NULL,
-                time_col time NOT NULL,
-                uuid_col uuid NOT NULL,
-                json_col json NOT NULL,
-                char_col \"char\" NOT NULL
-                )",
-        table
-    ))
-    .execute(&mut *pg_conn)
-    .await
-    .context(format!("unable to create table {table})"))?;
-
-    cdk_deploy_start(&config_path, None).await?;
-    let connector_name = &config.meta.name;
-    let connector_status = cdk_deploy_status(connector_name)?;
-    info!("connector: {connector_name}, status: {connector_status:?}");
-
-    let count = 10;
-    let records = generate_records(table, count)?;
-
-    produce_to_fluvio(fluvio, &config.meta.topic, records.clone()).await?;
-
-    // when
     #[derive(sqlx::FromRow, Debug)]
     #[allow(dead_code)]
     struct TestRecord {
@@ -128,18 +87,133 @@ async fn test_postgres_all_data_types(fluvio: &Fluvio, pg_conn: &mut PgConnectio
         json_col: serde_json::Value,
         char_col: i8,
     }
-    let read_result = read_from_postgres(table, count).await;
+
+    info!("running 'test_postgres_all_data_types' test");
+    let config_path = new_config_path("test_postgres_all_data_types.yaml")?;
+    debug!("{config_path:?}");
+    let config: TestConfig = serde_yaml::from_reader(std::fs::File::open(&config_path)?)?;
+    let table = "test_postgres_all_data_types";
+    sqlx::query(&format!(
+        "CREATE TABLE {} (
+                bool_col bool NOT NULL,
+                smallint_col smallint NOT NULL,
+                int_col int NOT NULL,
+                bigint_col bigint NOT NULL,
+                float_col float4 NOT NULL,
+                double_col float8 NOT NULL,
+                text_col varchar NOT NULL,
+                bytes_col bytea NOT NULL,
+                numeric_col numeric NOT NULL,
+                timestamp_col timestamp NOT NULL,
+                date_col date NOT NULL,
+                time_col time NOT NULL,
+                uuid_col uuid NOT NULL PRIMARY KEY,
+                json_col json NOT NULL,
+                char_col \"char\" NOT NULL
+                )",
+        table
+    ))
+    .execute(&mut *pg_conn)
+    .await
+    .context(format!("unable to create table {table})"))?;
+
+    cdk_deploy_start(&config_path, None).await?;
+    let connector_name = &config.meta.name;
+    let connector_status = cdk_deploy_status(connector_name)?;
+    info!("connector: {connector_name}, status: {connector_status:?}");
+
+    let count = 10;
+    let records = generate_records(table, count)?;
+
+    assert_eq!(records.len(), count);
+
+    {
+        produce_to_fluvio(
+            fluvio,
+            &config.meta.topic,
+            records
+                .iter()
+                .map(|op| serde_json::to_string(&Operation::Insert(op.clone())))
+                .collect::<serde_json::Result<_>>()?,
+        )
+        .await?;
+        let mut received_records: Vec<TestRecord> = read_from_postgres(table, count).await?;
+
+        received_records.sort_by_key(|r| r.smallint_col);
+
+        assert_eq!(received_records.len(), count);
+        for (i, record) in received_records.into_iter().enumerate() {
+            assert_eq!(record.int_col as usize, i);
+            assert_eq!(record.smallint_col as usize, i);
+            assert_eq!(record.bigint_col as usize, i);
+        }
+    }
+
+    // first upsert should do nothing
+    {
+        let records = records
+            .iter()
+            .map(|op| {
+                let op = Upsert {
+                    table: op.table.clone(),
+                    values: op.values.clone(),
+                    uniq_idx: "uuid_col".into(),
+                };
+                serde_json::to_string(&Operation::Upsert(op))
+            })
+            .collect::<serde_json::Result<_>>()?;
+        produce_to_fluvio(fluvio, &config.meta.topic, records).await?;
+
+        task::sleep(Duration::from_secs(3)).await;
+
+        let mut received_records: Vec<TestRecord> = read_from_postgres(table, count).await?;
+
+        received_records.sort_by_key(|r| r.smallint_col);
+
+        assert_eq!(received_records.len(), count);
+        for (i, record) in received_records.into_iter().enumerate() {
+            assert_eq!(record.int_col as usize, i);
+            assert_eq!(record.smallint_col as usize, i);
+            assert_eq!(record.bigint_col as usize, i);
+        }
+    }
+
+    // second upsert should do update
+    {
+        let records = records
+            .iter()
+            .enumerate()
+            .map(|(i, op)| {
+                let mut op = Upsert {
+                    table: op.table.clone(),
+                    values: op.values.clone(),
+                    uniq_idx: "uuid_col".into(),
+                };
+                op.values[2].raw_value = (i + 1).to_string();
+                op.values[3].raw_value = (i + 2).to_string();
+                op.values[4].raw_value = (i + 4).to_string();
+                serde_json::to_string(&Operation::Upsert(op))
+            })
+            .collect::<serde_json::Result<_>>()?;
+        produce_to_fluvio(fluvio, &config.meta.topic, records).await?;
+
+        task::sleep(Duration::from_secs(3)).await;
+
+        let mut received_records: Vec<TestRecord> = read_from_postgres(table, count).await?;
+
+        received_records.sort_by_key(|r| r.smallint_col);
+
+        assert_eq!(received_records.len(), count);
+        for (i, record) in received_records.into_iter().enumerate() {
+            assert_eq!(record.smallint_col as usize, i + 1);
+            assert_eq!(record.int_col as usize, i + 2);
+            assert_eq!(record.bigint_col as usize, i + 4);
+        }
+    }
+
     cdk_deploy_shutdown(connector_name)?;
     remove_topic(fluvio, &config.meta.topic).await?;
-    let received_records: Vec<TestRecord> = read_result?;
 
-    // then
-    assert_eq!(received_records.len(), count);
-    for (i, record) in received_records.into_iter().enumerate() {
-        assert_eq!(record.int_col as usize, i);
-        assert_eq!(record.smallint_col as usize, i);
-        assert_eq!(record.bigint_col as usize, i);
-    }
     info!("test 'test_postgres_all_data_types' passed");
     Ok(())
 }
@@ -377,10 +451,10 @@ fn cdk_deploy_status(connector_name: &str) -> Result<Option<String>> {
     Ok(None)
 }
 
-fn generate_records(table: &str, count: usize) -> Result<Vec<String>> {
+fn generate_records(table: &str, count: usize) -> Result<Vec<Insert>> {
     let mut result = Vec::with_capacity(count);
     for i in 0..count {
-        let op = Operation::Insert(Insert {
+        let op = Insert {
             table: table.to_string(),
             values: vec![
                 Value {
@@ -454,7 +528,7 @@ fn generate_records(table: &str, count: usize) -> Result<Vec<String>> {
                 },
                 Value {
                     column: "uuid_col".to_string(),
-                    raw_value: "D9C64A1B-9527-4E8C-BE74-D0208A15FF01".to_string(),
+                    raw_value: uuid::Uuid::new_v4().to_string(),
                     type_: Type::Uuid,
                 },
                 Value {
@@ -463,8 +537,8 @@ fn generate_records(table: &str, count: usize) -> Result<Vec<String>> {
                     type_: Type::Char,
                 },
             ],
-        });
-        result.push(serde_json::to_string(&op)?);
+        };
+        result.push(op);
     }
     Ok(result)
 }
