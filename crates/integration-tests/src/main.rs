@@ -340,6 +340,7 @@ fn cdk_deploy_shutdown(connector_name: &str) -> Result<()> {
     let output = Command::new("cdk")
         .arg("deploy")
         .arg("shutdown")
+        .arg("--name")
         .arg(connector_name)
         .output()?;
     if !output.status.success() {
