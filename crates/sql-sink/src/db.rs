@@ -18,6 +18,13 @@ trait DbConnection {
     fn kind(&self) -> &'static str;
 
     async fn insert(&mut self, insert: &Insert) -> anyhow::Result<()>;
+
+    fn as_postgres_conn(&mut self) -> Option<&mut PgConnection> {
+        None
+    }
+    fn as_sqlite_conn(&mut self) -> Option<&mut SqliteConnection> {
+        None
+    }
 }
 
 #[async_trait]
@@ -27,7 +34,7 @@ impl DbConnection for SqliteConnection {
     }
 
     async fn insert(&mut self, insert: &Insert) -> anyhow::Result<()> {
-        let query = build_insert_query(insert);
+        let query = build_insert_query_sqlite(insert);
         debug!(query, "sending");
         let mut query = sqlx::query(&query);
 
@@ -45,6 +52,10 @@ impl DbConnection for SqliteConnection {
 
         Ok(())
     }
+
+    fn as_sqlite_conn(&mut self) -> Option<&mut SqliteConnection> {
+        Some(self)
+    }
 }
 
 #[async_trait]
@@ -54,7 +65,7 @@ impl DbConnection for PgConnection {
     }
 
     async fn insert(&mut self, insert: &Insert) -> anyhow::Result<()> {
-        let query = build_insert_query(insert);
+        let query = build_insert_query_postgres(insert);
         debug!(query, "sending");
         let mut query = sqlx::query(&query);
 
@@ -72,11 +83,21 @@ impl DbConnection for PgConnection {
 
         Ok(())
     }
+
+    fn as_postgres_conn(&mut self) -> Option<&mut PgConnection> {
+        Some(self)
+    }
 }
 
-fn build_insert_query(Insert { table, values }: &Insert) -> String {
+fn build_insert_query_sqlite(Insert { table, values }: &Insert) -> String {
     let columns = values.iter().map(|v| v.column.as_str()).join(",");
     let values_clause = (1..=values.len()).map(|_| "?").join(",");
+    format!("INSERT INTO {table} ({columns}) VALUES ({values_clause})")
+}
+
+fn build_insert_query_postgres(Insert { table, values }: &Insert) -> String {
+    let columns = values.iter().map(|v| v.column.as_str()).join(",");
+    let values_clause = (1..=values.len()).map(|i| format!("${i}")).join(",");
     format!("INSERT INTO {table} ({columns}) VALUES ({values_clause})")
 }
 
@@ -194,12 +215,18 @@ mod tests {
     #[ignore]
     #[async_std::test]
     async fn test_data_types_postgres() -> anyhow::Result<()> {
-        //given
-        let mut db =
-            Db::connect("postgresql://myusername:mypassword@localhost:5432/myusername").await?;
+        init_logger();
 
-        db.execute(
-            r#"CREATE TABLE IF NOT EXISTS big_table (
+        let url = "postgresql://myusername:mypassword@localhost:5432/myusername";
+
+        //given
+        let mut db = Db::connect(url).await?;
+
+        db.connection
+            .as_postgres_conn()
+            .unwrap()
+            .execute(
+                r#"CREATE TABLE IF NOT EXISTS big_table (
             json_col JSONB,
             bool_col BOOL,
             char_col CHAR,
@@ -213,8 +240,8 @@ mod tests {
             timestamp_col TIMESTAMP,
             uuid_col UUID
             );"#,
-        )
-        .await?;
+            )
+            .await?;
 
         let operation = Operation::Insert(Insert {
             table: "big_table".to_string(),
@@ -283,7 +310,7 @@ mod tests {
         });
 
         //when
-        db.execute(operation).await?;
+        db.execute(&operation).await?;
 
         //then
         Ok(())
@@ -292,11 +319,17 @@ mod tests {
     #[async_std::test]
     async fn test_data_types_sqlite() -> anyhow::Result<()> {
         init_logger();
-        //given
-        let mut db = Db::connect("sqlite::memory:").await?;
 
-        db.execute(
-            r#"CREATE TABLE IF NOT EXISTS big_table (
+        let url = "sqlite::memory:";
+
+        //given
+        let mut db = Db::connect(url).await?;
+
+        db.connection
+            .as_sqlite_conn()
+            .unwrap()
+            .execute(
+                r#"CREATE TABLE IF NOT EXISTS big_table (
             json_col TEXT,
             bool_col BOOLEAN,
             char_col INTEGER,
@@ -311,8 +344,8 @@ mod tests {
             timestamp_col TIMESTAMP,
             uuid_col TEXT
             );"#,
-        )
-        .await?;
+            )
+            .await?;
 
         let operation = Operation::Insert(Insert {
             table: "big_table".to_string(),
@@ -386,15 +419,15 @@ mod tests {
         });
 
         //when
-        db.execute(operation).await?;
+        db.execute(&operation).await?;
 
         //then
-        match db {
-            Db::Postgres(_) => unreachable!(),
-            Db::Sqlite(ref mut conn) => {
-                let row = conn
-                    .fetch_one(
-                        r#"SELECT 
+        let row = db
+            .connection
+            .as_sqlite_conn()
+            .unwrap()
+            .fetch_one(
+                r#"SELECT 
                 json_col,
                 bool_col,
                 char_col,
@@ -409,38 +442,37 @@ mod tests {
                 timestamp_col,
                 uuid_col
                  FROM big_table"#,
-                    )
-                    .await?;
-                let json_col: String = row.get(0);
-                assert_eq!(json_col, "{\"json_key\":\"json_value\"}".to_string());
-                let bool_col: bool = row.get(1);
-                assert!(bool_col);
-                let char_col: i8 = row.get(2);
-                assert_eq!(char_col, 126);
-                let small_int_col: i32 = row.get(3);
-                assert_eq!(small_int_col, 12);
-                let int_col: i32 = row.get(4);
-                assert_eq!(int_col, 40);
-                let big_int_col: i64 = row.get(5);
-                assert_eq!(big_int_col, 312);
-                let text_col: String = row.get(6);
-                assert_eq!(text_col, "some text");
-                let bytes_col: Vec<u8> = row.get(7);
-                assert_eq!(bytes_col, b"some bytes");
-                let float: f32 = row.get(8);
-                assert_eq!(float, 3.123);
-                let double: f64 = row.get(9);
-                assert_eq!(double, 3.333333333);
-                let numeric: f64 = row.get(10);
-                assert_eq!(numeric, 10f64);
-                let _timestamp: NaiveDateTime = row.get(11);
-                let uuid: Uuid = row.get(12);
-                assert_eq!(
-                    uuid.to_string(),
-                    "d9c64a1b-9527-4e8c-be74-d0208a15ff01".to_string()
-                );
-            }
-        };
+            )
+            .await?;
+        let json_col: String = row.get(0);
+        assert_eq!(json_col, "{\"json_key\":\"json_value\"}".to_string());
+        let bool_col: bool = row.get(1);
+        assert!(bool_col);
+        let char_col: i8 = row.get(2);
+        assert_eq!(char_col, 126);
+        let small_int_col: i32 = row.get(3);
+        assert_eq!(small_int_col, 12);
+        let int_col: i32 = row.get(4);
+        assert_eq!(int_col, 40);
+        let big_int_col: i64 = row.get(5);
+        assert_eq!(big_int_col, 312);
+        let text_col: String = row.get(6);
+        assert_eq!(text_col, "some text");
+        let bytes_col: Vec<u8> = row.get(7);
+        assert_eq!(bytes_col, b"some bytes");
+        let float: f32 = row.get(8);
+        assert_eq!(float, 3.123);
+        let double: f64 = row.get(9);
+        assert_eq!(double, 3.333333333);
+        let numeric: f64 = row.get(10);
+        assert_eq!(numeric, 10f64);
+        let _timestamp: NaiveDateTime = row.get(11);
+        let uuid: Uuid = row.get(12);
+        assert_eq!(
+            uuid.to_string(),
+            "d9c64a1b-9527-4e8c-be74-d0208a15ff01".to_string()
+        );
+
         Ok(())
     }
 
@@ -460,8 +492,8 @@ mod tests {
     #[test]
     fn test_insert_query_postgres() {
         //given
-        let table = "test_table";
-        let values = [
+        let table = "test_table".to_owned();
+        let values = vec![
             Value {
                 column: "col1".to_string(),
                 raw_value: "1".to_string(),
@@ -475,7 +507,7 @@ mod tests {
         ];
 
         //when
-        let query = <Db as Insert<Postgres>>::query(table, &values);
+        let query = build_insert_query_postgres(&Insert { table, values });
 
         //then
         assert_eq!(query, "INSERT INTO test_table (col1,col2) VALUES ($1,$2)");
@@ -484,8 +516,8 @@ mod tests {
     #[test]
     fn test_insert_query_sqlite() {
         //given
-        let table = "test_table";
-        let values = [
+        let table = "test_table".to_owned();
+        let values = vec![
             Value {
                 column: "col1".to_string(),
                 raw_value: "1".to_string(),
@@ -499,7 +531,7 @@ mod tests {
         ];
 
         //when
-        let query = <Db as Insert<Sqlite>>::query(table, &values);
+        let query = build_insert_query_sqlite(&Insert { table, values });
 
         //then
         assert_eq!(query, "INSERT INTO test_table (col1,col2) VALUES (?,?)");
