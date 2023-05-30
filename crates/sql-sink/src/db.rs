@@ -586,6 +586,30 @@ mod tests {
     }
 
     #[test]
+    fn test_upsert_query_postgres() {
+        //given
+        let table = "test_table".to_owned();
+        let values = vec![
+            Value {
+                column: "col1".to_string(),
+                raw_value: "1".to_string(),
+                type_: Type::Int,
+            },
+            Value {
+                column: "col2".to_string(),
+                raw_value: "text".to_string(),
+                type_: Type::Text,
+            },
+        ];
+
+        //when
+        let query = build_upsert_query_postgres(&Upsert { table, values, uniq_idx: "my_idx".into() });
+
+        //then
+        assert_eq!(query, "INSERT INTO test_table (col1,col2) VALUES ($1,$2) ON CONFLICT(my_idx) DO UPDATE");
+    }
+
+    #[test]
     fn test_insert_query_sqlite() {
         //given
         let table = "test_table".to_owned();
@@ -607,5 +631,29 @@ mod tests {
 
         //then
         assert_eq!(query, "INSERT INTO test_table (col1,col2) VALUES (?,?)");
+    }
+
+    #[test]
+    fn test_upsert_query_sqlite() {
+        //given
+        let table = "test_table".to_owned();
+        let values = vec![
+            Value {
+                column: "col1".to_string(),
+                raw_value: "1".to_string(),
+                type_: Type::Int,
+            },
+            Value {
+                column: "col2".to_string(),
+                raw_value: "text".to_string(),
+                type_: Type::Text,
+            },
+        ];
+
+        //when
+        let query = build_upsert_query_sqlite(&Upsert { table, values, uniq_idx: "my_idx".into() });
+
+        //then
+        assert_eq!(query, "INSERT INTO test_table (col1,col2) VALUES (?,?) ON CONFLICT(my_idx) DO UPDATE");
     }
 }
