@@ -62,6 +62,8 @@ async fn main() -> Result<()> {
     result1?;
     result2?;
 
+    info!("ALL PASSED");
+
     Ok(())
 }
 
@@ -147,7 +149,7 @@ async fn test_postgres_with_json_sql_transformations(
     pg_conn: &mut PgConnection,
 ) -> Result<()> {
     // given
-    info!("running 'test_postgres_all_data_types' test");
+    info!("running 'test_postgres_with_json_sql_transformations' test");
     let config_path = new_config_path("test_postgres_with_json_sql_transformations.yaml")?;
     debug!("{config_path:?}");
     let config: TestConfig = serde_yaml::from_reader(std::fs::File::open(&config_path)?)?;
