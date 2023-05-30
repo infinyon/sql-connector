@@ -63,7 +63,7 @@ impl DbConnection for SqliteConnection {
         debug!(query, "sending");
         let mut query = sqlx::query(&query);
 
-        for value in upsert.values.iter() {
+        for value in upsert.values.iter().chain(upsert.values.iter()) {
             query = match sqlite_bind(query, value) {
                 Ok(q) => q,
                 Err(err) => {
@@ -115,7 +115,7 @@ impl DbConnection for PgConnection {
         debug!(query, "sending");
         let mut query = sqlx::query(&query);
 
-        for value in upsert.values.iter() {
+        for value in upsert.values.iter().chain(upsert.values.iter()) {
             query = match postgres_bind(query, value) {
                 Ok(q) => q,
                 Err(err) => {
@@ -157,7 +157,8 @@ fn build_upsert_query_sqlite(
 ) -> String {
     let columns = values.iter().map(|v| v.column.as_str()).join(",");
     let values_clause = (1..=values.len()).map(|_| "?").join(",");
-    format!("INSERT INTO {table} ({columns}) VALUES ({values_clause}) ON CONFLICT({uniq_idx}) DO UPDATE")
+    let set_clause = values.iter().map(|v| format!("{}=?", v.column)).join(",");
+    format!("INSERT INTO {table} ({columns}) VALUES ({values_clause}) ON CONFLICT({uniq_idx}) DO UPDATE SET {set_clause}")
 }
 
 fn build_upsert_query_postgres(
@@ -169,7 +170,15 @@ fn build_upsert_query_postgres(
 ) -> String {
     let columns = values.iter().map(|v| v.column.as_str()).join(",");
     let values_clause = (1..=values.len()).map(|i| format!("${i}")).join(",");
-    format!("INSERT INTO {table} ({columns}) VALUES ({values_clause}) ON CONFLICT({uniq_idx}) DO UPDATE")
+    let set_clause = values
+        .iter()
+        .enumerate()
+        .map(|(i, v)| {
+            let idx = i + values.len() + 1;
+            format!("{}=${idx}", v.column)
+        })
+        .join(",");
+    format!("INSERT INTO {table} ({columns}) VALUES ({values_clause}) ON CONFLICT({uniq_idx}) DO UPDATE SET {set_clause}")
 }
 
 fn sqlite_bind<'a>(
@@ -298,7 +307,7 @@ mod tests {
         double_col REAL,
         numeric_col REAL,
         timestamp_col TIMESTAMP,
-        uuid_col TEXT
+        uuid_col TEXT PRIMARY KEY
     );";
 
     const SELECT: &str = "
@@ -429,7 +438,7 @@ mod tests {
 
     #[ignore]
     #[async_std::test]
-    async fn test_data_types_postgres() -> anyhow::Result<()> {
+    async fn test_insert_postgres() -> anyhow::Result<()> {
         init_logger();
 
         let url = "postgresql://myusername:mypassword@localhost:5432/myusername";
@@ -460,8 +469,63 @@ mod tests {
         Ok(())
     }
 
+    #[ignore]
     #[async_std::test]
-    async fn test_data_types_sqlite() -> anyhow::Result<()> {
+    async fn test_upsert_postgres() -> anyhow::Result<()> {
+        init_logger();
+
+        let url = "postgresql://myusername:mypassword@localhost:5432/myusername";
+
+        let mut db = Db::connect(url).await?;
+
+        db.connection
+            .as_postgres_conn()
+            .unwrap()
+            .execute(CREATE_TABLE)
+            .await?;
+
+        let insert = make_insert();
+        let upsert = Upsert {
+            table: insert.table,
+            values: insert.values,
+            uniq_idx: "uuid_col".into(),
+        };
+        let operation = Operation::Upsert(upsert.clone());
+
+        // second upsert should do nothing
+        for _ in 0..2 {
+            db.execute(&operation).await?;
+
+            let row = db
+                .connection
+                .as_postgres_conn()
+                .unwrap()
+                .fetch_one(SELECT)
+                .await?;
+            check_row(row.into());
+        }
+
+        // update using upsert
+        let mut upsert = upsert;
+        upsert.values[4].raw_value = "41".into();
+        let operation = Operation::Upsert(upsert);
+
+        db.execute(&operation).await?;
+
+        let row = db
+            .connection
+            .as_postgres_conn()
+            .unwrap()
+            .fetch_one(SELECT)
+            .await?;
+        let int_col: i32 = row.get(4);
+        assert_eq!(int_col, 41);
+
+        Ok(())
+    }
+
+    #[async_std::test]
+    async fn test_insert_sqlite() -> anyhow::Result<()> {
         init_logger();
 
         let url = "sqlite::memory:";
@@ -488,6 +552,60 @@ mod tests {
             .fetch_one(SELECT)
             .await?;
         check_row(row.into());
+
+        Ok(())
+    }
+
+    #[async_std::test]
+    async fn test_upsert_sqlite() -> anyhow::Result<()> {
+        init_logger();
+
+        let url = "sqlite::memory:";
+
+        let mut db = Db::connect(url).await?;
+
+        db.connection
+            .as_sqlite_conn()
+            .unwrap()
+            .execute(CREATE_TABLE)
+            .await?;
+
+        let insert = make_insert();
+        let upsert = Upsert {
+            table: insert.table,
+            values: insert.values,
+            uniq_idx: "uuid_col".into(),
+        };
+        let operation = Operation::Upsert(upsert.clone());
+
+        // second upsert should do nothing
+        for _ in 0..2 {
+            db.execute(&operation).await?;
+
+            let row = db
+                .connection
+                .as_sqlite_conn()
+                .unwrap()
+                .fetch_one(SELECT)
+                .await?;
+            check_row(row.into());
+        }
+
+        // update using upsert
+        let mut upsert = upsert;
+        upsert.values[4].raw_value = "41".into();
+        let operation = Operation::Upsert(upsert);
+
+        db.execute(&operation).await?;
+
+        let row = db
+            .connection
+            .as_sqlite_conn()
+            .unwrap()
+            .fetch_one(SELECT)
+            .await?;
+        let int_col: i32 = row.get(4);
+        assert_eq!(int_col, 41);
 
         Ok(())
     }
@@ -556,7 +674,7 @@ mod tests {
         //then
         assert_eq!(
             query,
-            "INSERT INTO test_table (col1,col2) VALUES ($1,$2) ON CONFLICT(my_idx) DO UPDATE"
+            "INSERT INTO test_table (col1,col2) VALUES ($1,$2) ON CONFLICT(my_idx) DO UPDATE SET col1=$3,col2=$4"
         );
     }
 
@@ -611,7 +729,7 @@ mod tests {
         //then
         assert_eq!(
             query,
-            "INSERT INTO test_table (col1,col2) VALUES (?,?) ON CONFLICT(my_idx) DO UPDATE"
+            "INSERT INTO test_table (col1,col2) VALUES (?,?) ON CONFLICT(my_idx) DO UPDATE SET col1=?,col2=?"
         );
     }
 }
