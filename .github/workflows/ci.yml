@@ -62,6 +62,7 @@ jobs:
 
   integration_tests:
     name: Integration testing on - ${{ matrix.os }}.
+    if: github.event_name == 'push' && github.ref == 'refs/heads/staging'
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: true
