@@ -25,11 +25,12 @@ impl SqlSink {
 impl Sink<Operation> for SqlSink {
     async fn connect(self, _offset: Option<Offset>) -> Result<LocalBoxSink<Operation>> {
         let db = Db::connect(self.url.as_str()).await?;
-        info!("connected to database {}", db.kind());
+        info!("Connected to Database {}", db.kind());
         let unfold = futures::sink::unfold(db, |mut db: Db, record: Operation| async move {
             db.execute(&record).await?;
             Ok::<_, anyhow::Error>(db)
         });
+
         Ok(Box::pin(unfold))
     }
 }
