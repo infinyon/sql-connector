@@ -1,6 +1,6 @@
+use std::str::FromStr;
+
 use anyhow::anyhow;
-use fluvio_connector_common::tracing::{debug, error};
-use fluvio_model_sql::{Operation, Type, Value};
 use itertools::Itertools;
 use rust_decimal::Decimal;
 use sqlx::any::{AnyConnectOptions, AnyKind};
@@ -11,7 +11,9 @@ use sqlx::sqlite::SqliteArguments;
 use sqlx::{
     Connection, Database, Executor, IntoArguments, PgConnection, Postgres, Sqlite, SqliteConnection,
 };
-use std::str::FromStr;
+
+use fluvio_connector_common::tracing::{debug, error};
+use fluvio_model_sql::{Operation, Type, Value};
 
 const NAIVE_DATE_TIME_FORMAT: &str = "%Y-%m-%d %H:%M:%S%.f";
 
