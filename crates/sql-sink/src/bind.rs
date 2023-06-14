@@ -16,14 +16,14 @@ pub const NAIVE_DATE_TIME_FORMAT: &str = "%Y-%m-%d %H:%M:%S%.f";
 pub trait Bind<DB: Database> {
     fn bind_value<'a>(
         query: Query<'a, DB, <DB as HasArguments<'a>>::Arguments>,
-        value: &Value,
+        value: &'a Value,
     ) -> anyhow::Result<Query<'a, DB, <DB as HasArguments<'a>>::Arguments>>;
 }
 
 impl Bind<Postgres> for Db {
     fn bind_value<'a>(
         query: Query<'a, Postgres, PgArguments>,
-        value: &Value,
+        value: &'a Value,
     ) -> anyhow::Result<Query<'a, Postgres, PgArguments>> {
         let query = match value.type_ {
             Type::Bool => query.bind(bool::from_str(&value.raw_value)?),
@@ -33,8 +33,8 @@ impl Bind<Postgres> for Db {
             Type::BigInt => query.bind(i64::from_str(&value.raw_value)?),
             Type::Float => query.bind(f32::from_str(&value.raw_value)?),
             Type::DoublePrecision => query.bind(f64::from_str(&value.raw_value)?),
-            Type::Text => query.bind(value.raw_value.clone()),
-            Type::Bytes => query.bind(value.raw_value.as_bytes().to_vec()),
+            Type::Text => query.bind(value.raw_value.as_str()),
+            Type::Bytes => query.bind(value.raw_value.as_bytes()),
             Type::Numeric => query.bind(Decimal::from_str(&value.raw_value)?),
             Type::Timestamp => query.bind(chrono::NaiveDateTime::parse_from_str(
                 &value.raw_value,
@@ -52,7 +52,7 @@ impl Bind<Postgres> for Db {
 impl Bind<Sqlite> for Db {
     fn bind_value<'a>(
         query: Query<'a, Sqlite, SqliteArguments<'a>>,
-        value: &Value,
+        value: &'a Value,
     ) -> anyhow::Result<Query<'a, Sqlite, SqliteArguments<'a>>> {
         let query = match value.type_ {
             Type::Bool => query.bind(bool::from_str(&value.raw_value)?),
@@ -62,8 +62,8 @@ impl Bind<Sqlite> for Db {
             Type::BigInt => query.bind(i64::from_str(&value.raw_value)?),
             Type::Float => query.bind(f32::from_str(&value.raw_value)?),
             Type::DoublePrecision => query.bind(f64::from_str(&value.raw_value)?),
-            Type::Text => query.bind(value.raw_value.clone()),
-            Type::Bytes => query.bind(value.raw_value.as_bytes().to_vec()),
+            Type::Text => query.bind(value.raw_value.as_str()),
+            Type::Bytes => query.bind(value.raw_value.as_bytes()),
             Type::Numeric => query.bind(f64::from_str(&value.raw_value)?),
             Type::Timestamp => query.bind(chrono::NaiveDateTime::parse_from_str(
                 &value.raw_value,
