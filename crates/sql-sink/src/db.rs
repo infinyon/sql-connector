@@ -1,3 +1,5 @@
+use std::str::FromStr;
+
 use anyhow::anyhow;
 use fluvio_connector_common::tracing::{debug, error};
 use fluvio_model_sql::{Insert as InsertData, Operation, Upsert as UpsertData, Value};
@@ -6,7 +8,9 @@ use sqlx::database::HasArguments;
 use sqlx::{
     Connection, Database, Executor, IntoArguments, PgConnection, Postgres, Sqlite, SqliteConnection,
 };
-use std::str::FromStr;
+
+use fluvio_connector_common::tracing::{debug, error};
+use fluvio_model_sql::{Operation, Type, Value};
 
 use crate::bind::Bind;
 use crate::insert::Insert;
