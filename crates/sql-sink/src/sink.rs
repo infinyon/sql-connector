@@ -27,7 +27,7 @@ impl Sink<Operation> for SqlSink {
         let db = Db::connect(self.url.as_str()).await?;
         info!("connected to database {}", db.kind());
         let unfold = futures::sink::unfold(db, |mut db: Db, record: Operation| async move {
-            db.execute(record).await?;
+            db.execute(&record).await?;
             Ok::<_, anyhow::Error>(db)
         });
         Ok(Box::pin(unfold))

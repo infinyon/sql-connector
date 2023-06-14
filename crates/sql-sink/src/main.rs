@@ -1,6 +1,9 @@
+mod bind;
 mod config;
 mod db;
+mod insert;
 mod sink;
+mod upsert;
 
 use config::SqlConfig;
 use fluvio_connector_common::{connector, consumer::ConsumerStream, tracing::trace, Result, Sink};
