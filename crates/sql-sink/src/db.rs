@@ -1,242 +1,20 @@
 use anyhow::anyhow;
-use async_trait::async_trait;
 use fluvio_connector_common::tracing::{debug, error};
-use fluvio_model_sql::{Insert, Operation, Type, Upsert, Value};
-use itertools::Itertools;
-use rust_decimal::Decimal;
+use fluvio_model_sql::{Insert as InsertData, Operation, Upsert as UpsertData, Value};
 use sqlx::any::{AnyConnectOptions, AnyKind};
-use sqlx::postgres::PgArguments;
-use sqlx::query::Query;
-use sqlx::sqlite::SqliteArguments;
-use sqlx::{Connection, Executor, PgConnection, Postgres, Sqlite, SqliteConnection};
+use sqlx::database::HasArguments;
+use sqlx::{
+    Connection, Database, Executor, IntoArguments, PgConnection, Postgres, Sqlite, SqliteConnection,
+};
 use std::str::FromStr;
 
-const NAIVE_DATE_TIME_FORMAT: &str = "%Y-%m-%d %H:%M:%S%.f";
+use crate::bind::Bind;
+use crate::insert::Insert;
+use crate::upsert::Upsert;
 
-#[async_trait]
-trait DbConnection {
-    fn kind(&self) -> &'static str;
-
-    async fn insert(&mut self, insert: &Insert) -> anyhow::Result<()>;
-
-    async fn upsert(&mut self, upsert: &Upsert) -> anyhow::Result<()>;
-
-    #[cfg(test)]
-    fn as_postgres_conn(&mut self) -> Option<&mut PgConnection> {
-        None
-    }
-
-    #[cfg(test)]
-    fn as_sqlite_conn(&mut self) -> Option<&mut SqliteConnection> {
-        None
-    }
-}
-
-#[async_trait]
-impl DbConnection for SqliteConnection {
-    fn kind(&self) -> &'static str {
-        "sqlite"
-    }
-
-    async fn insert(&mut self, insert: &Insert) -> anyhow::Result<()> {
-        let query = build_insert_query_sqlite(insert);
-        debug!(query, "sending");
-        let mut query = sqlx::query(&query);
-
-        for value in insert.values.iter() {
-            query = match sqlite_bind(query, value) {
-                Ok(q) => q,
-                Err(err) => {
-                    error!("Unable to bind {:?}. Reason: {:?}", value, err);
-                    return Err(err);
-                }
-            };
-        }
-
-        self.execute(query).await?;
-
-        Ok(())
-    }
-
-    async fn upsert(&mut self, upsert: &Upsert) -> anyhow::Result<()> {
-        let query = build_upsert_query_sqlite(upsert);
-        debug!(query, "sending");
-        let mut query = sqlx::query(&query);
-
-        for value in upsert.values.iter().chain(upsert.values.iter()) {
-            query = match sqlite_bind(query, value) {
-                Ok(q) => q,
-                Err(err) => {
-                    error!("Unable to bind {:?}. Reason: {:?}", value, err);
-                    return Err(err);
-                }
-            };
-        }
-
-        self.execute(query).await?;
-
-        Ok(())
-    }
-
-    #[cfg(test)]
-    fn as_sqlite_conn(&mut self) -> Option<&mut SqliteConnection> {
-        Some(self)
-    }
-}
-
-#[async_trait]
-impl DbConnection for PgConnection {
-    fn kind(&self) -> &'static str {
-        "postgres"
-    }
-
-    async fn insert(&mut self, insert: &Insert) -> anyhow::Result<()> {
-        let query = build_insert_query_postgres(insert);
-        debug!(query, "sending");
-        let mut query = sqlx::query(&query);
-
-        for value in insert.values.iter() {
-            query = match postgres_bind(query, value) {
-                Ok(q) => q,
-                Err(err) => {
-                    error!("Unable to bind {:?}. Reason: {:?}", value, err);
-                    return Err(err);
-                }
-            };
-        }
-
-        self.execute(query).await?;
-
-        Ok(())
-    }
-
-    async fn upsert(&mut self, upsert: &Upsert) -> anyhow::Result<()> {
-        let query = build_upsert_query_postgres(upsert);
-        debug!(query, "sending");
-        let mut query = sqlx::query(&query);
-
-        for value in upsert.values.iter().chain(upsert.values.iter()) {
-            query = match postgres_bind(query, value) {
-                Ok(q) => q,
-                Err(err) => {
-                    error!("Unable to bind {:?}. Reason: {:?}", value, err);
-                    return Err(err);
-                }
-            };
-        }
-
-        self.execute(query).await?;
-
-        Ok(())
-    }
-
-    #[cfg(test)]
-    fn as_postgres_conn(&mut self) -> Option<&mut PgConnection> {
-        Some(self)
-    }
-}
-
-fn build_insert_query_sqlite(Insert { table, values }: &Insert) -> String {
-    let columns = values.iter().map(|v| v.column.as_str()).join(",");
-    let values_clause = (1..=values.len()).map(|_| "?").join(",");
-    format!("INSERT INTO {table} ({columns}) VALUES ({values_clause})")
-}
-
-fn build_insert_query_postgres(Insert { table, values }: &Insert) -> String {
-    let columns = values.iter().map(|v| v.column.as_str()).join(",");
-    let values_clause = (1..=values.len()).map(|i| format!("${i}")).join(",");
-    format!("INSERT INTO {table} ({columns}) VALUES ({values_clause})")
-}
-
-fn build_upsert_query_sqlite(
-    Upsert {
-        table,
-        values,
-        uniq_idx,
-    }: &Upsert,
-) -> String {
-    let columns = values.iter().map(|v| v.column.as_str()).join(",");
-    let values_clause = (1..=values.len()).map(|_| "?").join(",");
-    let set_clause = values.iter().map(|v| format!("{}=?", v.column)).join(",");
-    format!("INSERT INTO {table} ({columns}) VALUES ({values_clause}) ON CONFLICT({uniq_idx}) DO UPDATE SET {set_clause}")
-}
-
-fn build_upsert_query_postgres(
-    Upsert {
-        table,
-        values,
-        uniq_idx,
-    }: &Upsert,
-) -> String {
-    let columns = values.iter().map(|v| v.column.as_str()).join(",");
-    let values_clause = (1..=values.len()).map(|i| format!("${i}")).join(",");
-    let set_clause = values
-        .iter()
-        .enumerate()
-        .map(|(i, v)| {
-            let idx = i + values.len() + 1;
-            format!("{}=${idx}", v.column)
-        })
-        .join(",");
-    format!("INSERT INTO {table} ({columns}) VALUES ({values_clause}) ON CONFLICT({uniq_idx}) DO UPDATE SET {set_clause}")
-}
-
-fn sqlite_bind<'a>(
-    query: Query<'a, Sqlite, SqliteArguments<'a>>,
-    value: &Value,
-) -> anyhow::Result<Query<'a, Sqlite, SqliteArguments<'a>>> {
-    let query = match value.type_ {
-        Type::Bool => query.bind(bool::from_str(&value.raw_value)?),
-        Type::Char => query.bind(i8::from_str(&value.raw_value)?),
-        Type::SmallInt => query.bind(i16::from_str(&value.raw_value)?),
-        Type::Int => query.bind(i32::from_str(&value.raw_value)?),
-        Type::BigInt => query.bind(i64::from_str(&value.raw_value)?),
-        Type::Float => query.bind(f32::from_str(&value.raw_value)?),
-        Type::DoublePrecision => query.bind(f64::from_str(&value.raw_value)?),
-        Type::Text => query.bind(value.raw_value.clone()),
-        Type::Bytes => query.bind(value.raw_value.as_bytes().to_vec()),
-        Type::Numeric => query.bind(f64::from_str(&value.raw_value)?),
-        Type::Timestamp => query.bind(chrono::NaiveDateTime::parse_from_str(
-            &value.raw_value,
-            NAIVE_DATE_TIME_FORMAT,
-        )?),
-        Type::Date => query.bind(chrono::NaiveDate::from_str(&value.raw_value)?),
-        Type::Time => query.bind(chrono::NaiveTime::from_str(&value.raw_value)?),
-        Type::Uuid => query.bind(uuid::Uuid::from_str(&value.raw_value)?),
-        Type::Json => query.bind(serde_json::Value::from_str(&value.raw_value)?),
-    };
-    Ok(query)
-}
-
-fn postgres_bind<'a>(
-    query: Query<'a, Postgres, PgArguments>,
-    value: &Value,
-) -> anyhow::Result<Query<'a, Postgres, PgArguments>> {
-    let query = match value.type_ {
-        Type::Bool => query.bind(bool::from_str(&value.raw_value)?),
-        Type::Char => query.bind(i8::from_str(&value.raw_value)?),
-        Type::SmallInt => query.bind(i16::from_str(&value.raw_value)?),
-        Type::Int => query.bind(i32::from_str(&value.raw_value)?),
-        Type::BigInt => query.bind(i64::from_str(&value.raw_value)?),
-        Type::Float => query.bind(f32::from_str(&value.raw_value)?),
-        Type::DoublePrecision => query.bind(f64::from_str(&value.raw_value)?),
-        Type::Text => query.bind(value.raw_value.clone()),
-        Type::Bytes => query.bind(value.raw_value.as_bytes().to_vec()),
-        Type::Numeric => query.bind(Decimal::from_str(&value.raw_value)?),
-        Type::Timestamp => query.bind(chrono::NaiveDateTime::parse_from_str(
-            &value.raw_value,
-            NAIVE_DATE_TIME_FORMAT,
-        )?),
-        Type::Date => query.bind(chrono::NaiveDate::from_str(&value.raw_value)?),
-        Type::Time => query.bind(chrono::NaiveTime::from_str(&value.raw_value)?),
-        Type::Uuid => query.bind(uuid::Uuid::from_str(&value.raw_value)?),
-        Type::Json => query.bind(serde_json::Value::from_str(&value.raw_value)?),
-    };
-    Ok(query)
-}
-
-pub struct Db {
-    connection: Box<dyn DbConnection>,
+pub enum Db {
+    Postgres(Box<PgConnection>),
+    Sqlite(Box<SqliteConnection>),
 }
 
 impl Db {
@@ -248,48 +26,153 @@ impl Db {
                     .as_postgres()
                     .ok_or_else(|| anyhow!("invalid postgres connect options"))?;
                 let conn = PgConnection::connect_with(options).await?;
-                Ok(Db {
-                    connection: Box::new(conn),
-                })
+                Ok(Db::Postgres(conn.into()))
             }
             AnyKind::Sqlite => {
                 let options = options
                     .as_sqlite()
                     .ok_or_else(|| anyhow!("invalid sqlite connect options"))?;
                 let conn = SqliteConnection::connect_with(options).await?;
-                Ok(Db {
-                    connection: Box::new(conn),
-                })
+                Ok(Db::Sqlite(conn.into()))
             }
         }
     }
 
     pub async fn execute(&mut self, operation: &Operation) -> anyhow::Result<()> {
         match &operation {
-            Operation::Insert(insert) => self.insert(insert).await,
-            Operation::Upsert(upsert) => self.upsert(upsert).await,
+            Operation::Insert(data) => self.insert(data).await,
+            Operation::Upsert(data) => self.upsert(data).await,
         }
     }
 
-    async fn insert(&mut self, insert: &Insert) -> anyhow::Result<()> {
-        self.connection.insert(insert).await
+    async fn insert(&mut self, data: &InsertData) -> anyhow::Result<()> {
+        match self {
+            Self::Postgres(conn) => {
+                do_insert::<Postgres, &mut PgConnection, Self>(
+                    conn.as_mut(),
+                    &data.table,
+                    &data.values,
+                )
+                .await
+            }
+            Self::Sqlite(conn) => {
+                do_insert::<Sqlite, &mut SqliteConnection, Self>(
+                    conn.as_mut(),
+                    &data.table,
+                    &data.values,
+                )
+                .await
+            }
+        }
     }
 
-    async fn upsert(&mut self, upsert: &Upsert) -> anyhow::Result<()> {
-        self.connection.upsert(upsert).await
+    async fn upsert(&mut self, data: &UpsertData) -> anyhow::Result<()> {
+        match self {
+            Self::Postgres(conn) => {
+                do_upsert::<Postgres, &mut PgConnection, Self>(
+                    conn.as_mut(),
+                    &data.table,
+                    &data.values,
+                    &data.uniq_idx,
+                )
+                .await
+            }
+            Self::Sqlite(conn) => {
+                do_upsert::<Sqlite, &mut SqliteConnection, Self>(
+                    conn.as_mut(),
+                    &data.table,
+                    &data.values,
+                    &data.uniq_idx,
+                )
+                .await
+            }
+        }
     }
 
     pub fn kind(&self) -> &'static str {
-        self.connection.kind()
+        match self {
+            Db::Postgres(_) => "postgres",
+            Db::Sqlite(_) => "sqlite",
+        }
     }
+
+    #[cfg(test)]
+    pub fn as_sqlite_conn(&mut self) -> Option<&mut SqliteConnection> {
+        match self {
+            Self::Sqlite(conn) => Some(conn.as_mut()),
+            _ => None,
+        }
+    }
+
+    #[cfg(test)]
+    pub fn as_postgres_conn(&mut self) -> Option<&mut PgConnection> {
+        match self {
+            Self::Postgres(conn) => Some(conn.as_mut()),
+            _ => None,
+        }
+    }
+}
+
+async fn do_insert<'c, DB, E, I>(conn: E, table: &str, values: &[Value]) -> anyhow::Result<()>
+where
+    DB: Database,
+    for<'q> <DB as HasArguments<'q>>::Arguments: IntoArguments<'q, DB>,
+    E: Executor<'c, Database = DB>,
+    I: Insert<DB> + Bind<DB>,
+{
+    let sql = I::insert_query(table, values);
+    debug!(sql, "sending");
+    let mut query = sqlx::query(&sql);
+    for value in values {
+        query = match I::bind_value(query, value) {
+            Ok(q) => q,
+            Err(err) => {
+                error!("Unable to bind {:?}. Reason: {:?}", value, err);
+                return Err(err);
+            }
+        }
+    }
+    query.execute(conn).await?;
+    Ok(())
+}
+
+async fn do_upsert<'c, DB, E, I>(
+    conn: E,
+    table: &str,
+    values: &[Value],
+    uniq_idx: &str,
+) -> anyhow::Result<()>
+where
+    DB: Database,
+    for<'q> <DB as HasArguments<'q>>::Arguments: IntoArguments<'q, DB>,
+    E: Executor<'c, Database = DB>,
+    I: Upsert<DB> + Bind<DB>,
+{
+    let sql = I::upsert_query(table, values, uniq_idx);
+    debug!(sql, "sending");
+    let mut query = sqlx::query(&sql);
+    for value in values.iter().chain(values.iter()) {
+        query = match I::bind_value(query, value) {
+            Ok(q) => q,
+            Err(err) => {
+                error!("Unable to bind {:?}. Reason: {:?}", value, err);
+                return Err(err);
+            }
+        }
+    }
+    query.execute(conn).await?;
+    Ok(())
 }
 
 #[cfg(test)]
 mod tests {
+    use crate::bind::NAIVE_DATE_TIME_FORMAT;
+
     use super::*;
     use chrono::{NaiveDateTime, Utc};
     use fluvio_connector_common::future::init_logger;
     use fluvio_model_sql::Type;
+    use rust_decimal::Decimal;
     use sqlx::{any::AnyRow, Executor, Row};
     use uuid::Uuid;
 
@@ -328,8 +211,8 @@ mod tests {
     FROM big_table;
     ";
 
-    fn make_insert() -> Insert {
-        Insert {
+    fn make_insert() -> InsertData {
+        InsertData {
             table: "big_table".to_string(),
             values: vec![
                 Value {
@@ -446,11 +329,7 @@ mod tests {
         //given
         let mut db = Db::connect(url).await?;
 
-        db.connection
-            .as_postgres_conn()
-            .unwrap()
-            .execute(CREATE_TABLE)
-            .await?;
+        db.as_postgres_conn().unwrap().execute(CREATE_TABLE).await?;
 
         let operation = Operation::Insert(make_insert());
 
@@ -458,12 +337,7 @@ mod tests {
         db.execute(&operation).await?;
 
         //then
-        let row = db
-            .connection
-            .as_postgres_conn()
-            .unwrap()
-            .fetch_one(SELECT)
-            .await?;
+        let row = db.as_postgres_conn().unwrap().fetch_one(SELECT).await?;
         check_row(row.into());
 
         Ok(())
@@ -478,14 +352,10 @@ mod tests {
 
         let mut db = Db::connect(url).await?;
 
-        db.connection
-            .as_postgres_conn()
-            .unwrap()
-            .execute(CREATE_TABLE)
-            .await?;
+        db.as_postgres_conn().unwrap().execute(CREATE_TABLE).await?;
 
         let insert = make_insert();
-        let upsert = Upsert {
+        let upsert = UpsertData {
             table: insert.table,
             values: insert.values,
             uniq_idx: "uuid_col".into(),
@@ -496,12 +366,7 @@ mod tests {
         for _ in 0..2 {
             db.execute(&operation).await?;
 
-            let row = db
-                .connection
-                .as_postgres_conn()
-                .unwrap()
-                .fetch_one(SELECT)
-                .await?;
+            let row = db.as_postgres_conn().unwrap().fetch_one(SELECT).await?;
             check_row(row.into());
         }
 
@@ -512,12 +377,7 @@ mod tests {
 
         db.execute(&operation).await?;
 
-        let row = db
-            .connection
-            .as_postgres_conn()
-            .unwrap()
-            .fetch_one(SELECT)
-            .await?;
+        let row = db.as_postgres_conn().unwrap().fetch_one(SELECT).await?;
         let int_col: i32 = row.get(4);
         assert_eq!(int_col, 41);
 
@@ -533,11 +393,7 @@ mod tests {
         //given
         let mut db = Db::connect(url).await?;
 
-        db.connection
-            .as_sqlite_conn()
-            .unwrap()
-            .execute(CREATE_TABLE)
-            .await?;
+        db.as_sqlite_conn().unwrap().execute(CREATE_TABLE).await?;
 
         let operation = Operation::Insert(make_insert());
 
@@ -545,12 +401,7 @@ mod tests {
         db.execute(&operation).await?;
 
         //then
-        let row = db
-            .connection
-            .as_sqlite_conn()
-            .unwrap()
-            .fetch_one(SELECT)
-            .await?;
+        let row = db.as_sqlite_conn().unwrap().fetch_one(SELECT).await?;
         check_row(row.into());
 
         Ok(())
@@ -564,14 +415,10 @@ mod tests {
 
         let mut db = Db::connect(url).await?;
 
-        db.connection
-            .as_sqlite_conn()
-            .unwrap()
-            .execute(CREATE_TABLE)
-            .await?;
+        db.as_sqlite_conn().unwrap().execute(CREATE_TABLE).await?;
 
         let insert = make_insert();
-        let upsert = Upsert {
+        let upsert = UpsertData {
             table: insert.table,
             values: insert.values,
             uniq_idx: "uuid_col".into(),
@@ -582,12 +429,7 @@ mod tests {
         for _ in 0..2 {
             db.execute(&operation).await?;
 
-            let row = db
-                .connection
-                .as_sqlite_conn()
-                .unwrap()
-                .fetch_one(SELECT)
-                .await?;
+            let row = db.as_sqlite_conn().unwrap().fetch_one(SELECT).await?;
             check_row(row.into());
         }
 
@@ -598,12 +440,7 @@ mod tests {
 
         db.execute(&operation).await?;
 
-        let row = db
-            .connection
-            .as_sqlite_conn()
-            .unwrap()
-            .fetch_one(SELECT)
-            .await?;
+        let row = db.as_sqlite_conn().unwrap().fetch_one(SELECT).await?;
         let int_col: i32 = row.get(4);
         assert_eq!(int_col, 41);
 
@@ -621,115 +458,5 @@ mod tests {
 
         //then
         assert_eq!(timestamp, parsed);
-    }
-
-    #[test]
-    fn test_insert_query_postgres() {
-        //given
-        let table = "test_table".to_owned();
-        let values = vec![
-            Value {
-                column: "col1".to_string(),
-                raw_value: "1".to_string(),
-                type_: Type::Int,
-            },
-            Value {
-                column: "col2".to_string(),
-                raw_value: "text".to_string(),
-                type_: Type::Text,
-            },
-        ];
-
-        //when
-        let query = build_insert_query_postgres(&Insert { table, values });
-
-        //then
-        assert_eq!(query, "INSERT INTO test_table (col1,col2) VALUES ($1,$2)");
-    }
-
-    #[test]
-    fn test_upsert_query_postgres() {
-        //given
-        let table = "test_table".to_owned();
-        let values = vec![
-            Value {
-                column: "col1".to_string(),
-                raw_value: "1".to_string(),
-                type_: Type::Int,
-            },
-            Value {
-                column: "col2".to_string(),
-                raw_value: "text".to_string(),
-                type_: Type::Text,
-            },
-        ];
-
-        //when
-        let query = build_upsert_query_postgres(&Upsert {
-            table,
-            values,
-            uniq_idx: "my_idx".into(),
-        });
-
-        //then
-        assert_eq!(
-            query,
-            "INSERT INTO test_table (col1,col2) VALUES ($1,$2) ON CONFLICT(my_idx) DO UPDATE SET col1=$3,col2=$4"
-        );
-    }
-
-    #[test]
-    fn test_insert_query_sqlite() {
-        //given
-        let table = "test_table".to_owned();
-        let values = vec![
-            Value {
-                column: "col1".to_string(),
-                raw_value: "1".to_string(),
-                type_: Type::Int,
-            },
-            Value {
-                column: "col2".to_string(),
-                raw_value: "text".to_string(),
-                type_: Type::Text,
-            },
-        ];
-
-        //when
-        let query = build_insert_query_sqlite(&Insert { table, values });
-
-        //then
-        assert_eq!(query, "INSERT INTO test_table (col1,col2) VALUES (?,?)");
-    }
-
-    #[test]
-    fn test_upsert_query_sqlite() {
-        //given
-        let table = "test_table".to_owned();
-        let values = vec![
-            Value {
-                column: "col1".to_string(),
-                raw_value: "1".to_string(),
-                type_: Type::Int,
-            },
-            Value {
-                column: "col2".to_string(),
-                raw_value: "text".to_string(),
-                type_: Type::Text,
-            },
-        ];
-
-        //when
-        let query = build_upsert_query_sqlite(&Upsert {
-            table,
-            values,
-            uniq_idx: "my_idx".into(),
-        });
-
-        //then
-        assert_eq!(
-            query,
-            "INSERT INTO test_table (col1,col2) VALUES (?,?) ON CONFLICT(my_idx) DO UPDATE SET col1=?,col2=?"
-        );
     }
 }
