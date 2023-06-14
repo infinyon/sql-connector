@@ -1,8 +1,6 @@
 use std::str::FromStr;
 
 use anyhow::anyhow;
-use fluvio_connector_common::tracing::{debug, error};
-use fluvio_model_sql::{Insert as InsertData, Operation, Upsert as UpsertData, Value};
 use sqlx::any::{AnyConnectOptions, AnyKind};
 use sqlx::database::HasArguments;
 use sqlx::{
@@ -10,7 +8,7 @@ use sqlx::{
 };
 
 use fluvio_connector_common::tracing::{debug, error};
-use fluvio_model_sql::{Operation, Type, Value};
+use fluvio_model_sql::{Insert as InsertData, Operation, Upsert as UpsertData, Value};
 
 use crate::bind::Bind;
 use crate::insert::Insert;

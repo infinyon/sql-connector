@@ -1,6 +1,7 @@
-use fluvio_model_sql::Value;
 use itertools::Itertools;
 use sqlx::{Database, Postgres, Sqlite};
+
+use fluvio_model_sql::Value;
 
 use crate::db::Db;
 

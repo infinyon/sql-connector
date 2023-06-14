@@ -1,11 +1,13 @@
-use fluvio_model_sql::{Type, Value};
+use std::str::FromStr;
+
 use rust_decimal::Decimal;
 use sqlx::database::HasArguments;
 use sqlx::postgres::PgArguments;
 use sqlx::query::Query;
 use sqlx::sqlite::SqliteArguments;
 use sqlx::{Database, Postgres, Sqlite};
-use std::str::FromStr;
+
+use fluvio_model_sql::{Type, Value};
 
 use crate::db::Db;
 
