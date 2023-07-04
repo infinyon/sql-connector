@@ -15,7 +15,7 @@ async-std = { version = "1.12",  default-features = false, features = ["attribut
 serde = { version = "1.0", default-features = false, features = ["derive"]}
 serde_json = { version = "1", default-features = false }
 url = { version = "2.4", default-features = false, features = ["serde"] }
-itertools = { version = "0.10", default-features = false }
+itertools = "0.11"
 sqlx = { version = "0.6", features = [ "runtime-async-std-rustls" , "postgres", "sqlite", "any", "decimal", "chrono", "uuid" ], default-features = false }
 rust_decimal = { version = "1.30", default-features = false }
 chrono = { version = "0.4", default-features = false }
