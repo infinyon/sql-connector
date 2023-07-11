@@ -63,14 +63,14 @@ mod tests {
         // then
         assert_eq!(
             operation,
-            Operation::Insert {
+            Operation::Insert(Insert {
                 table: "test_table".to_string(),
                 values: vec![Value {
                     column: "body".to_string(),
                     raw_value: "{\"key\":\"value\"}".to_string(),
                     type_: Type::Json
                 }]
-            }
+            })
         );
     }
 
@@ -134,14 +134,14 @@ mod tests {
         // then
         assert_eq!(
             operation,
-            Operation::Insert {
+            Operation::Insert(Insert {
                 table: "test_table".to_string(),
                 values: vec![Value {
                     column: "body".to_string(),
                     raw_value: "some_value".to_string(),
                     type_: Type::Text
                 }]
-            }
+            })
         );
     }
 
@@ -178,7 +178,7 @@ mod tests {
 
         // then
         assert!(
-            matches!(operation, Operation::Insert { table, values } if table.eq("test_table") && values.len() == 2)
+            matches!(operation, Operation::Insert(Insert{ table, values }) if table.eq("test_table") && values.len() == 2)
         );
     }
 }
