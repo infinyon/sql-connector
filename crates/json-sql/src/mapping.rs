@@ -6,6 +6,7 @@ use std::collections::HashMap;
 use std::fmt;
 
 #[derive(Debug, Serialize, Deserialize, Eq, PartialEq)]
+#[serde(rename_all = "kebab-case")]
 pub struct Mapping {
     pub table: String,
     #[serde(default = "default_op")]
