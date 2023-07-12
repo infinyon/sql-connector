@@ -185,3 +185,6 @@ transforms:
               type: "jsonb"
               required: true
 ```
+
+See more about upsert in [our blog](https://infinyon.com/blog/2023/07/sql-upsert/).
+Note: the blog doesn't use `json-sql` smartmodule and has hardcoded records for demonstration. `sql-connector` is intended to be used with `json-sql`.
