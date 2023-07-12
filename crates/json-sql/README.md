@@ -92,7 +92,7 @@ we will have the following correspondence between `json-key` and result:
 | $                | {"device":{"number": 1}, "metrics": ["one", "two", "three"]} |
 
 ### Data types
-The list of supported types and corresponding types from [SQL model](../../rust-connectors/models/fluvio-model-sql):
+The list of supported types and corresponding types from [SQL model](../fluvio-model-sql):
 
 | Mapping                                     | Model           |
 |---------------------------------------------|-----------------|
