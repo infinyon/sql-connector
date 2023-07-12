@@ -1,7 +1,7 @@
+use crate::mapping::{Mapping, Operation as MappingOperation};
 use crate::pointer::pointer;
-use crate::Mapping;
 use eyre::eyre;
-use fluvio_model_sql::{Insert, Operation, Type, Value};
+use fluvio_model_sql::{Insert, Operation, Type, Upsert, Value};
 use fluvio_smartmodule::Result;
 
 pub(crate) fn transform(record: serde_json::Value, mapping: &Mapping) -> Result<Operation> {
@@ -26,10 +26,23 @@ pub(crate) fn transform(record: serde_json::Value, mapping: &Mapping) -> Result<
             type_: Type::from(column.value.type_),
         });
     }
-    Ok(Operation::Insert(Insert {
-        table: mapping.table.clone(),
-        values,
-    }))
+
+    let op = match mapping.operation {
+        MappingOperation::Insert => Operation::Insert(Insert {
+            table: mapping.table.clone(),
+            values,
+        }),
+        MappingOperation::Upsert => Operation::Upsert(Upsert {
+            table: mapping.table.clone(),
+            values,
+            uniq_idx: mapping
+                .uniq_idx
+                .clone()
+                .ok_or_else(|| eyre!("Missing uniq_idx when mapping upsert."))?,
+        }),
+    };
+
+    Ok(op)
 }
 
 #[cfg(test)]

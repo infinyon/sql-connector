@@ -9,6 +9,7 @@ and the output corresponding SQL operation. For example:
 ```json
 {
   "table" : "target_table",
+  "operation": "insert",
   "map-columns": {
     "target_column_name" : {
       "json-key": "device.number",
@@ -111,3 +112,45 @@ The list of supported types and corresponding types from [SQL model](../fluvio-m
 | json, jsonb                                 | Json            |
 | uuid                                        | Uuid            |
 
+### Operations
+
+Currently `insert` and `upsert` are supported.
+
+#### Insert
+
+```json
+{
+  "table" : "target_table",
+  "operation": "insert",
+  "map-columns": {
+    "target_column_name" : {
+      "json-key": "device.number",
+      "value": {
+        "type": "int4"
+      }
+    }
+  }
+}
+```
+
+#### Upsert
+
+Upsert additionaly takes an `uniq_idx` argument. `uniq_idx` specifies the index or column name to check for uniqueness of a record.
+If a record with same value in `uniq_idx` exists in the database, it will be updated. If no record exists with same value, the given record will
+be inserted.
+
+```json
+{
+  "table" : "target_table",
+  "operation": "upsert",
+  "uniq_idx": "my_unique_column",
+  "map-columns": {
+    "target_column_name" : {
+      "json-key": "device.number",
+      "value": {
+        "type": "int4"
+      }
+    }
+  }
+}
+```
