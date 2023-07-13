@@ -146,8 +146,8 @@ Every step would be same except the connector config and the behavior of the con
 
 We have a `operation` parameter which defaults to `insert` but we can pass `upsert` here to specify we want to do an upsert operation.
 
-Upsert additionaly takes an `unique_columns` argument. `unique_columns` specifies the list indices or column names to check for uniqueness of a record.
-If a record with same value in `unique_columns` exists in the database, it will be updated. If no record exists with same value, the given record will
+Upsert additionaly takes an `unique-columns` argument. `unique-columns` specifies the list indices or column names to check for uniqueness of a record.
+If a record with same value in `unique-columns` exists in the database, it will be updated. If no record exists with same value, the given record will
 be inserted.
 
 Connector configuration file for upsert (assuming `device_id` is a unique column or an index in the database):
