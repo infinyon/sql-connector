@@ -135,15 +135,15 @@ Currently `insert` and `upsert` are supported.
 
 #### Upsert
 
-Upsert additionaly takes an `uniq_idx` argument. `uniq_idx` specifies the index or column name to check for uniqueness of a record.
-If a record with same value in `uniq_idx` exists in the database, it will be updated. If no record exists with same value, the given record will
+Upsert additionaly takes an `unique_columns` argument. `unique_columns` specifies the list indices or column names to check for uniqueness of a record.
+If a record with same value in `unique_columns` exists in the database, it will be updated. If no record exists with same value, the given record will
 be inserted.
 
 ```json
 {
   "table" : "target_table",
   "operation": "upsert",
-  "uniq_idx": "my_unique_column",
+  "unique-columns": ["my_unique_column"],
   "map-columns": {
     "target_column_name" : {
       "json-key": "device.number",

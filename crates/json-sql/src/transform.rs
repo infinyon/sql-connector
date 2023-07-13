@@ -32,14 +32,17 @@ pub(crate) fn transform(record: serde_json::Value, mapping: &Mapping) -> Result<
             table: mapping.table.clone(),
             values,
         }),
-        MappingOperation::Upsert => Operation::Upsert(Upsert {
-            table: mapping.table.clone(),
-            values,
-            uniq_idx: mapping
-                .uniq_idx
-                .clone()
-                .ok_or_else(|| eyre!("Missing uniq_idx when mapping upsert."))?,
-        }),
+        MappingOperation::Upsert => {
+            if mapping.unique_columns.is_empty() {
+                return Err(eyre!("unique-columns can't be empty when doing upsert"));
+            }
+
+            Operation::Upsert(Upsert {
+                table: mapping.table.clone(),
+                values,
+                uniq_idx: mapping.unique_columns.join(", "),
+            })
+        }
     };
 
     Ok(op)

@@ -12,7 +12,8 @@ pub struct Mapping {
     #[serde(default = "default_op")]
     pub operation: Operation,
     // only used when operation is upsert
-    pub uniq_idx: Option<String>,
+    #[serde(default)]
+    pub unique_columns: Vec<String>,
     #[serde(alias = "map-columns")]
     pub columns: HashMap<String, Column>,
 }
@@ -232,7 +233,7 @@ mod tests {
             mapping,
             Mapping {
                 operation: Operation::Insert,
-                uniq_idx: None,
+                unique_columns: Default::default(),
                 table: "test_table".to_string(),
                 columns: HashMap::from([(
                     "column_name".to_string(),
@@ -255,7 +256,10 @@ mod tests {
         let input = json!({
             "table" : "test_table",
             "operation": "upsert",
-            "uniq-idx": "my_idx",
+            "unique-columns": [
+                "my_idx",
+                "my_idx2"
+            ],
             "map-columns": {
                 "column_name" : {
                     "json-key": "test-key",
@@ -276,7 +280,7 @@ mod tests {
             mapping,
             Mapping {
                 operation: Operation::Upsert,
-                uniq_idx: Some("my_idx".into()),
+                unique_columns: vec!["my_idx".to_owned(), "my_idx2".to_owned()],
                 table: "test_table".to_string(),
                 columns: HashMap::from([(
                     "column_name".to_string(),
@@ -317,7 +321,7 @@ mod tests {
             mapping,
             Mapping {
                 operation: Operation::Insert,
-                uniq_idx: None,
+                unique_columns: Default::default(),
                 table: "test_table".to_string(),
                 columns: HashMap::from([(
                     "column_name".to_string(),
@@ -358,7 +362,7 @@ mod tests {
             mapping,
             Mapping {
                 operation: Operation::Insert,
-                uniq_idx: None,
+                unique_columns: Default::default(),
                 table: "test_table".to_string(),
                 columns: HashMap::from([(
                     "column_name".to_string(),
@@ -399,7 +403,7 @@ mod tests {
             mapping,
             Mapping {
                 operation: Operation::Insert,
-                uniq_idx: None,
+                unique_columns: Default::default(),
                 table: "test_table".to_string(),
                 columns: HashMap::from([(
                     "column_name".to_string(),
@@ -438,7 +442,7 @@ mod tests {
             mapping,
             Mapping {
                 operation: Operation::Insert,
-                uniq_idx: None,
+                unique_columns: Default::default(),
                 table: "test_table".to_string(),
                 columns: HashMap::from([(
                     "column_name".to_string(),
