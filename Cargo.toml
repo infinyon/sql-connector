@@ -12,5 +12,5 @@ inherits = "release"
 lto = true
 
 [workspace.dependencies]
-fluvio = { git = "https://github.com/infinyon/fluvio.git", tag = "v0.10.12" }
-fluvio-connector-common = { git = "https://github.com/infinyon/fluvio.git", tag = "v0.10.12" }
+fluvio = { git = "https://github.com/EstebanBorai/fluvio.git", rev = "f4b811030400218685c7dcb60bf3f02a4640b979" }
+fluvio-connector-common = { git = "https://github.com/EstebanBorai/fluvio.git", rev = "f4b811030400218685c7dcb60bf3f02a4640b979" }
