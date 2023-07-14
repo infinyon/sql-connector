@@ -6,10 +6,27 @@ use std::collections::HashMap;
 use std::fmt;
 
 #[derive(Debug, Serialize, Deserialize, Eq, PartialEq)]
+#[serde(rename_all = "kebab-case")]
 pub struct Mapping {
     pub table: String,
+    #[serde(default = "default_op")]
+    pub operation: Operation,
+    // only used when operation is upsert
+    #[serde(default)]
+    pub unique_columns: Vec<String>,
     #[serde(alias = "map-columns")]
     pub columns: HashMap<String, Column>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Eq, PartialEq)]
+#[serde(rename_all = "lowercase")]
+pub enum Operation {
+    Insert,
+    Upsert,
+}
+
+fn default_op() -> Operation {
+    Operation::Insert
 }
 
 #[derive(Debug, Serialize, Deserialize, Eq, PartialEq)]
@@ -195,6 +212,7 @@ mod tests {
         // given
         let input = json!({
             "table" : "test_table",
+            "operation": "insert",
             "map-columns": {
                 "column_name" : {
                     "json-key": "test-key",
@@ -214,6 +232,55 @@ mod tests {
         assert_eq!(
             mapping,
             Mapping {
+                operation: Operation::Insert,
+                unique_columns: Default::default(),
+                table: "test_table".to_string(),
+                columns: HashMap::from([(
+                    "column_name".to_string(),
+                    Column {
+                        json_key: "test-key".to_string(),
+                        value: Value {
+                            type_: ValueType::Integer,
+                            default: Some("4".to_string()),
+                            required: false
+                        }
+                    }
+                )])
+            }
+        );
+    }
+
+    #[test]
+    fn test_deserialize_upsert() {
+        // given
+        let input = json!({
+            "table" : "test_table",
+            "operation": "upsert",
+            "unique-columns": [
+                "my_idx",
+                "my_idx2"
+            ],
+            "map-columns": {
+                "column_name" : {
+                    "json-key": "test-key",
+                    "value": {
+                        "type": "int4",
+                        "default": "4",
+                        "required": false,
+                    }
+                }
+            }
+        });
+
+        // when
+        let mapping: Mapping = serde_json::from_value(input).expect("valid mapping");
+
+        // then
+        assert_eq!(
+            mapping,
+            Mapping {
+                operation: Operation::Upsert,
+                unique_columns: vec!["my_idx".to_owned(), "my_idx2".to_owned()],
                 table: "test_table".to_string(),
                 columns: HashMap::from([(
                     "column_name".to_string(),
@@ -253,6 +320,8 @@ mod tests {
         assert_eq!(
             mapping,
             Mapping {
+                operation: Operation::Insert,
+                unique_columns: Default::default(),
                 table: "test_table".to_string(),
                 columns: HashMap::from([(
                     "column_name".to_string(),
@@ -292,6 +361,8 @@ mod tests {
         assert_eq!(
             mapping,
             Mapping {
+                operation: Operation::Insert,
+                unique_columns: Default::default(),
                 table: "test_table".to_string(),
                 columns: HashMap::from([(
                     "column_name".to_string(),
@@ -331,6 +402,8 @@ mod tests {
         assert_eq!(
             mapping,
             Mapping {
+                operation: Operation::Insert,
+                unique_columns: Default::default(),
                 table: "test_table".to_string(),
                 columns: HashMap::from([(
                     "column_name".to_string(),
@@ -368,6 +441,8 @@ mod tests {
         assert_eq!(
             mapping,
             Mapping {
+                operation: Operation::Insert,
+                unique_columns: Default::default(),
                 table: "test_table".to_string(),
                 columns: HashMap::from([(
                     "column_name".to_string(),

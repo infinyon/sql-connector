@@ -1,7 +1,7 @@
+use crate::mapping::{Mapping, Operation as MappingOperation};
 use crate::pointer::pointer;
-use crate::Mapping;
 use eyre::eyre;
-use fluvio_model_sql::{Insert, Operation, Type, Value};
+use fluvio_model_sql::{Insert, Operation, Type, Upsert, Value};
 use fluvio_smartmodule::Result;
 
 pub(crate) fn transform(record: serde_json::Value, mapping: &Mapping) -> Result<Operation> {
@@ -26,16 +26,112 @@ pub(crate) fn transform(record: serde_json::Value, mapping: &Mapping) -> Result<
             type_: Type::from(column.value.type_),
         });
     }
-    Ok(Operation::Insert(Insert {
-        table: mapping.table.clone(),
-        values,
-    }))
+
+    let op = match mapping.operation {
+        MappingOperation::Insert => Operation::Insert(Insert {
+            table: mapping.table.clone(),
+            values,
+        }),
+        MappingOperation::Upsert => {
+            if mapping.unique_columns.is_empty() {
+                return Err(eyre!("unique-columns can't be empty when doing upsert"));
+            }
+
+            Operation::Upsert(Upsert {
+                table: mapping.table.clone(),
+                values,
+                uniq_idx: mapping.unique_columns.join(","),
+            })
+        }
+    };
+
+    Ok(op)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn test_transform_upsert_multiple_unique_columns() {
+        // given
+        let input = json!({
+            "key": "value",
+        });
+
+        let mapping: Mapping = serde_json::from_value(json!({
+            "table" : "test_table",
+            "operation": "upsert",
+            "unique-columns": ["my_col", "my_second_col"],
+            "map-columns": {
+                "body" : {
+                    "json-key": "$",
+                    "value": {
+                        "type": "json"
+                    }
+                }
+            }
+        }))
+        .expect("valid mapping");
+
+        // when
+        let operation = transform(input, &mapping).expect("transformation succeeded");
+
+        // then
+        assert_eq!(
+            operation,
+            Operation::Upsert(Upsert {
+                table: "test_table".to_string(),
+                uniq_idx: "my_col,my_second_col".into(),
+                values: vec![Value {
+                    column: "body".to_string(),
+                    raw_value: "{\"key\":\"value\"}".to_string(),
+                    type_: Type::Json
+                }]
+            })
+        );
+    }
+
+    #[test]
+    fn test_transform_upsert_single_unique_column() {
+        // given
+        let input = json!({
+            "key": "value"
+        });
+
+        let mapping: Mapping = serde_json::from_value(json!({
+            "table" : "test_table",
+            "operation": "upsert",
+            "unique-columns": ["my_col"],
+            "map-columns": {
+                "body" : {
+                    "json-key": "$",
+                    "value": {
+                        "type": "json"
+                    }
+                }
+            }
+        }))
+        .expect("valid mapping");
+
+        // when
+        let operation = transform(input, &mapping).expect("transformation succeeded");
+
+        // then
+        assert_eq!(
+            operation,
+            Operation::Upsert(Upsert {
+                table: "test_table".to_string(),
+                uniq_idx: "my_col".into(),
+                values: vec![Value {
+                    column: "body".to_string(),
+                    raw_value: "{\"key\":\"value\"}".to_string(),
+                    type_: Type::Json
+                }]
+            })
+        );
+    }
 
     #[test]
     fn test_pass_whole_object() {
