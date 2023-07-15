@@ -1,4 +1,4 @@
-name: Publish Hub
+name: Publish json-sql to Hub
 
 permissions: read-all
 
@@ -49,7 +49,7 @@ jobs:
         uses: actions/upload-artifact@v3
         with:
           name: smartmodule-artifact
-          path: smartmodule/.hub/json-sql-${{ github.event.inputs.smartmodule-version }}.ipkg
+          path: crates/json-sql/.hub/json-sql-${{ github.event.inputs.smartmodule-version }}.ipkg
   publish:
     needs: build
     uses: infinyon/fluvio/.github/workflows/smartmodule-publish.yml@master
