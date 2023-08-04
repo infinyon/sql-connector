@@ -52,7 +52,7 @@ jobs:
           path: crates/json-sql/.hub/json-sql-${{ github.event.inputs.smartmodule-version }}.ipkg
   publish:
     needs: build
-    uses: infinyon/fluvio/.github/workflows/smartmodule-publish.yml@master
+    uses: infinyon/fluvio/.github/workflows/smartmodule-publish.yml@test-pw-quote-armor
     with:
       fail-fast: false
       target_prod: ${{ inputs.target_prod }}
