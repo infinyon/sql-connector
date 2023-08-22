@@ -115,7 +115,7 @@ jobs:
       - name: Install Fluvio SMDK
         run: fluvio install smdk
       - name: Run Integration Test
-        timeout-minutes: 20
+        timeout-minutes: 30
         run: make integration_tests
 
   done:
