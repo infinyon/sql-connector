@@ -7,7 +7,7 @@ meta:
 sql:
   url: "postgresql://pguser:passpass@127.0.0.1:5432/pguser"
 transforms:
-  - uses: infinyon/json-sql@0.1.0
+  - uses: infinyon/json-sql@0.2.1
     with:
       mapping:
         table: "test_postgres_with_json_sql_transformations"
