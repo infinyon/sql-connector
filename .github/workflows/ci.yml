@@ -108,6 +108,8 @@ jobs:
           sleep 3
           echo foo | fluvio produce foobar
           fluvio consume foobar -B -d
+      - name: Install wasm target
+        run: rustup target add wasm32-unknown-unknown
       - name: Install Fluvio CDK
         run: fluvio install cdk
       - name: Install Fluvio SMDK
