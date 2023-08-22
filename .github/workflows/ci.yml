@@ -108,14 +108,14 @@ jobs:
           sleep 3
           echo foo | fluvio produce foobar
           fluvio consume foobar -B -d
-      - name: Login to Fluvio Cloud
-        run: |
-          fluvio cloud login --email ${{ secrets.DEV_HUB_USER_EMAIL }} --password ${{ secrets.DEV_HUB_USER_PASSWORD }} --remote ${{ vars.DEV_CLOUD_URL }}
-          fluvio profile switch k3d-fluvio
+      - name: Install wasm target
+        run: rustup target add wasm32-unknown-unknown
       - name: Install Fluvio CDK
         run: fluvio install cdk
+      - name: Install Fluvio SMDK
+        run: fluvio install smdk
       - name: Run Integration Test
-        timeout-minutes: 20
+        timeout-minutes: 30
         run: make integration_tests
 
   done:
