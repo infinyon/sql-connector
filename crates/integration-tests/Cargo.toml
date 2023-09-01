@@ -16,7 +16,7 @@ async-std = { version = "1.12", default-features = false, features = ["attribute
 futures-util = { version = "0.3", default-features = false }
 serde = { version = "1.0", default-features = false, features = ["derive"] }
 serde_yaml = { version = "0.9", default-features = false }
-fluvio-future = { version = "0.5", default-features = false, features = ["retry"] }
+fluvio-future = { version = "0.6", default-features = false, features = ["retry"] }
 serde_json = { version = "1.0", default-features = false }
 sqlx = { version = "0.6.3", features = ["postgres", "runtime-async-std-rustls", "decimal", "chrono", "uuid"] }
 rust_decimal = { version = "1.32" }
