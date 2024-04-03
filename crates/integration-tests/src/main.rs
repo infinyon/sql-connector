@@ -561,7 +561,7 @@ async fn produce_to_fluvio<V: Into<Vec<u8>> + std::fmt::Debug + Send + Sync + 's
 }
 
 async fn remove_topic(fluvio: &Fluvio, topic: &str) -> Result<()> {
-    fluvio.admin().await.delete::<TopicSpec, _>(topic).await?;
+    fluvio.admin().await.delete::<TopicSpec>(topic).await?;
     Ok(())
 }
 
