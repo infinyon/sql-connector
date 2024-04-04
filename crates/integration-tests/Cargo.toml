@@ -23,5 +23,5 @@ chrono = { version = "0.4" }
 uuid = { version = "1.3", features = ["v4"] }
 
 fluvio = { workspace = true }
-fluvio-future = { version = "0.6.2" }
+fluvio-future = { workspace = true }
 fluvio-model-sql = { path = "../fluvio-model-sql"}
