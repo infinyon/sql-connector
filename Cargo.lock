@@ -3252,6 +3252,7 @@ dependencies = [
  "fluvio-connector-common",
  "fluvio-model-sql",
  "futures",
+ "humantime",
  "itertools 0.12.1",
  "rust_decimal",
  "serde",
