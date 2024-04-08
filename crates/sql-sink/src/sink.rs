@@ -1,9 +1,9 @@
-use anyhow::{Context, Result};
+use anyhow::Context;
 use async_trait::async_trait;
 use url::Url;
 
 use fluvio::Offset;
-use fluvio_connector_common::{tracing::info, LocalBoxSink, Sink};
+use fluvio_connector_common::{tracing::info, LocalBoxSink, Result, Sink};
 use fluvio_model_sql::Operation;
 
 use crate::{config::SqlConfig, db::Db};
