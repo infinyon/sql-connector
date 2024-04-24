@@ -1,0 +1,14 @@
+meta:
+  name: test-postgres-consumer-offsets
+  type: sql-sink
+  version: latest
+  topic: test-postgres-consumer-offsets
+  consumer:
+    id: test-postgres-consumer-offsets
+    offset:
+      strategy: auto
+      flush-period:
+        secs: 1
+        nanos: 0
+sql:
+  url: "postgresql://pguser:passpass@127.0.0.1:5432/pguser"

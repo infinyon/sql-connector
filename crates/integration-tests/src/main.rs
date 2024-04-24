@@ -20,7 +20,10 @@ use serde_json::json;
 use sqlx::{postgres::PgRow, Connection, FromRow, PgConnection};
 
 use fluvio::{metadata::topic::TopicSpec, Fluvio, RecordKey};
-use fluvio_future::retry::{retry, ExponentialBackoff};
+use fluvio_future::{
+    retry::{retry, ExponentialBackoff},
+    timer::sleep,
+};
 use fluvio_model_sql::{Insert, Operation, Type, Upsert, Value};
 
 const POSTGRES_IMAGE: &str = "postgres:15.2";
@@ -56,10 +59,14 @@ async fn main() -> Result<()> {
         .await
         .context("test_postgres_with_json_sql_transformations failed");
 
+    let result3 = test_postgres_consumer_offsets(&fluvio, &mut pg_conn)
+        .await
+        .context("test_postgres_consumer_offsets failed");
     let _ = remove_postgres(&docker).await;
 
     result1?;
     result2?;
+    result3?;
 
     info!("ALL PASSED");
 
@@ -263,6 +270,54 @@ async fn test_postgres_with_json_sql_transformations(
         assert_eq!(record.record, json!({"device": { "device_id" : i }}));
     }
     info!("test 'test_postgres_with_json_sql_transformations' passed");
+    Ok(())
+}
+
+async fn test_postgres_consumer_offsets(fluvio: &Fluvio, pg_conn: &mut PgConnection) -> Result<()> {
+    // given
+    info!("running 'test_postgres_consumer_offsets' test");
+    let config_path = new_config_path("test_postgres_consumer_offsets.yaml")?;
+    debug!("{config_path:?}");
+    let config: TestConfig = serde_yaml::from_reader(std::fs::File::open(&config_path)?)?;
+    let table = "test_postgres_consumer_offsets";
+    sqlx::query(&format!(
+        "CREATE TABLE {} (device_id int, record json)",
+        table
+    ))
+    .execute(&mut *pg_conn)
+    .await
+    .context(format!("unable to create table {table})"))?;
+
+    cdk_deploy_start(&config_path, None).await?;
+    let connector_name = &config.meta.name;
+    let connector_status = cdk_deploy_status(connector_name)?;
+    info!("connector: {connector_name}, status: {connector_status:?}");
+
+    let count = 1;
+    let records = generate_json_records(count);
+
+    produce_to_fluvio(fluvio, &config.meta.topic, records.clone()).await?;
+    sleep(Duration::from_secs(2)).await;
+    produce_to_fluvio(fluvio, &config.meta.topic, records.clone()).await?;
+
+    // when
+    produce_to_fluvio(fluvio, &config.meta.topic, records.clone()).await?;
+    sleep(Duration::from_secs(2)).await;
+    produce_to_fluvio(fluvio, &config.meta.topic, records.clone()).await?;
+
+    cdk_deploy_shutdown(connector_name)?;
+    remove_topic(fluvio, &config.meta.topic).await?;
+
+    let consumer = fluvio
+        .consumer_offsets()
+        .await?
+        .into_iter()
+        .find(|c| c.consumer_id.eq("test-postgres-consumer-offsets"));
+
+    // then
+    assert!(consumer.is_some());
+    assert!(consumer.unwrap().offset >= 0);
+    info!("test 'test_postgres_consumer_offsets' passed");
     Ok(())
 }
 
