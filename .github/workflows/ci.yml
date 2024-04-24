@@ -7,10 +7,6 @@ concurrency:
 on:
   merge_group:
   workflow_dispatch:
-  push:
-    branches:
-      - staging
-      - trying
   pull_request:
     branches: [main]
     paths:
@@ -63,7 +59,6 @@ jobs:
 
   integration_tests:
     name: Integration testing on - ${{ matrix.os }}.
-    if: github.event_name == 'push' && github.ref == 'refs/heads/staging'
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: true
@@ -76,7 +71,7 @@ jobs:
       - name: Install musl-tools
         run: |
           set -ex
-          sudo apt-get update
+          sudo apt-get update || true
           sudo apt-get install -y musl-tools
       - name: Install Rust stable
         uses: actions-rs/toolchain@v1
@@ -85,21 +80,11 @@ jobs:
           components: clippy
           target: x86_64-unknown-linux-musl
           override: true
-      - uses: AbsaOSS/k3d-action@v2.4.0
-        name: "Create fluvio k3d Cluster"
-        with:
-          cluster-name: "fluvio"
-          args: --timeout 5m
-      - name: Ensure k3d cluster is ready
-        run: |
-          sleep 5
-          ./actions/k3d-check.sh
       - name: Install Fluvio Local Cluster
         timeout-minutes: 10
         uses: infinyon/fluvio@master
         with:
-          cluster-type: k3d
-          version: stable
+          cluster-type: local
       - name: Check Fluvio Installation
         run: |
           sleep 10
@@ -111,10 +96,6 @@ jobs:
           fluvio consume foobar -B -d
       - name: Install wasm target
         run: rustup target add wasm32-unknown-unknown
-      - name: Install Fluvio CDK
-        run: fluvio install cdk
-      - name: Install Fluvio SMDK
-        run: fluvio install smdk
       - name: Run Integration Test
         timeout-minutes: 30
         run: make integration_tests

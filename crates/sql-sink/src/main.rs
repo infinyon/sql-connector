@@ -9,7 +9,7 @@ use std::time::Duration;
 
 use anyhow::{anyhow, Result};
 use config::SqlConfig;
-use futures::SinkExt;
+use futures::{SinkExt, StreamExt};
 
 use fluvio_connector_common::{
     connector,
