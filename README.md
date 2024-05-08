@@ -1,13 +1,13 @@
 # Fluvio SQL Sink connector
-The SQL Sink connector reads records from Fluvio topic, applies configured transformations, and 
-sends new records to the SQL database (via `INSERT` statements). 
+The SQL Sink connector reads records from Fluvio topic, applies configured transformations, and
+sends new records to the SQL database (via `INSERT` statements).
 
 ## Supported databases
 1. PostgreSQL
 2. SQLite
 
 ### Data types
-| Model           | PostgreSQL                   | SQLite       |                                          
+| Model           | PostgreSQL                   | SQLite       |
 |:----------------|:-----------------------------|:-------------|
 | Bool            | BOOL                         | BOOLEAN      |
 | Char            | CHAR                         | INTEGER      |
@@ -29,7 +29,7 @@ sends new records to the SQL database (via `INSERT` statements).
 The SQL Sink connector expects the data in [Fluvio SQL Model](./crates/fluvio-model-sql/README.md) in JSON format.
 In order to work with different data formats or data structures, `transformations` can be applied.
 The transformation is a SmartModule pulled from the SmartModule Hub. Transformations are chained according to the order
-in the config. If a SmartModule requires configuration, it is passed via `with` section of `transforms` entry. 
+in the config. If a SmartModule requires configuration, it is passed via `with` section of `transforms` entry.
 
 ## Configuration
 | Option       | default | type   | description                                           |
@@ -40,7 +40,7 @@ in the config. If a SmartModule requires configuration, it is passed via `with` 
 ```yaml
 apiVersion: 0.1.0
 meta:
-  version: 0.4.1
+  version: 0.4.2
   name: my-sql-connector
   type: sql-sink
   topic: sql-topic
@@ -62,7 +62,7 @@ The connector can use secrets in order to hide sensitive information.
 ```yaml
 apiVersion: 0.1.0
 meta:
-  version: 0.4.1
+  version: 0.4.2
   name: my-sql-connector
   type: sql-sink
   topic: sql-topic
@@ -73,13 +73,13 @@ sql:
 ```
 
 ### Offset Management
-Fluvio Consumer Offset feature allows for a connector to store the offset in the Fluvio cluster and use it on restart.  
-To activate it, you need to provide the `consumer` name and set the `strategy: auto`.  
+Fluvio Consumer Offset feature allows for a connector to store the offset in the Fluvio cluster and use it on restart.
+To activate it, you need to provide the `consumer` name and set the `strategy: auto`.
 See the example below:
 ```yaml
 apiVersion: 0.2.0
 meta:
-  version: 0.4.1
+  version: 0.4.2
   name: my-sql-connector
   type: sql-sink
   topic:
@@ -126,7 +126,7 @@ Connector configuration file:
 # connector-config.yaml
 apiVersion: 0.1.0
 meta:
-  version: 0.4.1
+  version: 0.4.2
   name: json-sql-connector
   type: sql-sink
   topic: sql-topic
@@ -187,7 +187,7 @@ Connector configuration file for upsert (assuming `device_id` is a unique column
 # connector-config.yaml
 apiVersion: 0.1.0
 meta:
-  version: 0.4.1
+  version: 0.4.2
   name: json-sql-connector
   type: sql-sink
   topic: sql-topic

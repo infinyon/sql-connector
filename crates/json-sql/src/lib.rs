@@ -7,7 +7,8 @@ use once_cell::sync::OnceCell;
 use crate::mapping::Mapping;
 use eyre::ContextCompat;
 use fluvio_smartmodule::{
-    dataplane::smartmodule::SmartModuleExtraParams, smartmodule, Record, RecordData, Result,
+    dataplane::smartmodule::SmartModuleExtraParams, smartmodule, RecordData, Result,
+    SmartModuleRecord,
 };
 
 static MAPPING: OnceCell<Mapping> = OnceCell::new();
@@ -33,7 +34,7 @@ fn init(params: SmartModuleExtraParams) -> Result<()> {
 }
 
 #[smartmodule(map)]
-pub fn map(record: &Record) -> Result<(Option<RecordData>, RecordData)> {
+pub fn map(record: &SmartModuleRecord) -> Result<(Option<RecordData>, RecordData)> {
     let mapping = MAPPING
         .get()
         .wrap_err("json-sql mapping is not initialized")?;
