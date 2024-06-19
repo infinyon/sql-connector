@@ -155,13 +155,17 @@ transforms:
 ```
 
 You can use Fluvio `cdk` tool to deploy the connector:
+
 ```bash
 cdk deploy start --config connector-config.yaml
 ```
+
 To delete the connector run:
+
 ```bash
 cdk deploy shutdown --name json-sql-connector
 ```
+
 After you run the connector you will see records in your database table.
 
 See more in our [Build MQTT to SQL Pipeline](https://www.fluvio.io/docs/tutorials/mqtt-to-sql/) and [Build HTTP to SQL Pipeline](https://www.fluvio.io/docs/tutorials/data-pipeline/) tutorials.
