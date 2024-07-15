@@ -20,7 +20,7 @@ serde_json = { version = "1.0", default-features = false }
 sqlx = { version = "0.6.3", features = ["postgres", "runtime-async-std-rustls", "decimal", "chrono", "uuid"] }
 rust_decimal = { version = "1.35" }
 chrono = { version = "0.4" }
-uuid = { version = "1.9", features = ["v4"] }
+uuid = { version = "1.10", features = ["v4"] }
 
 fluvio = { workspace = true }
 fluvio-future = { workspace = true }
