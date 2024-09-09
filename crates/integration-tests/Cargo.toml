@@ -12,7 +12,7 @@ log = { version = "0.4", default-features = false }
 env_logger = { version = "0.11", default-features = false, features = ["auto-color", "humantime"] }
 anyhow = { version = "1.0", default-features = false }
 bollard = { version = "0.17", default-features = false }
-async-std = { version = "1.12", default-features = false, features = ["attributes", "tokio1"] }
+async-std = { version = "1.13", default-features = false, features = ["attributes", "tokio1"] }
 futures-util = { version = "0.3", default-features = false }
 serde = { version = "1.0", default-features = false, features = ["derive"] }
 serde_yaml = { version = "0.9", default-features = false }
