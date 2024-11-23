@@ -88,7 +88,7 @@ meta:
   consumer:
     id: my-sql-sink
     offset:
-    strategy: auto
+      strategy: auto
   secrets:
     - name: DATABASE_URL
 sql:
