@@ -253,11 +253,6 @@ async fn test_postgres_with_json_sql_transformations(
     produce_to_fluvio(fluvio, &config.meta.topic, records.clone()).await?;
 
     // when
-    #[derive(sqlx::FromRow, Debug)]
-    struct TestRecord {
-        device_id: i32,
-        record: serde_json::Value,
-    }
     let read_result = read_from_postgres(table, count).await;
     cdk_deploy_shutdown(connector_name)?;
     remove_topic(fluvio, &config.meta.topic).await?;
@@ -293,20 +288,35 @@ async fn test_postgres_consumer_offsets(fluvio: &Fluvio, pg_conn: &mut PgConnect
     let connector_status = cdk_deploy_status(connector_name)?;
     info!("connector: {connector_name}, status: {connector_status:?}");
 
-    let count = 1;
-    let records = generate_json_records(count);
-
-    produce_to_fluvio(fluvio, &config.meta.topic, records.clone()).await?;
-    sleep(Duration::from_secs(2)).await;
-    produce_to_fluvio(fluvio, &config.meta.topic, records.clone()).await?;
-
     // when
-    produce_to_fluvio(fluvio, &config.meta.topic, records.clone()).await?;
-    sleep(Duration::from_secs(2)).await;
-    produce_to_fluvio(fluvio, &config.meta.topic, records.clone()).await?;
+    let records = generate_raw_records(table, 0, 2)?;
+    produce_to_fluvio(fluvio, &config.meta.topic, records).await?;
+    let records = generate_raw_records(table, 2, 4)?;
+    produce_to_fluvio(fluvio, &config.meta.topic, records).await?;
+    sleep(Duration::from_secs(15)).await;
 
-    cdk_deploy_shutdown(connector_name)?;
+    info!("producing more records with connector down");
+    let records = generate_raw_records(table, 4, 6)?;
+    produce_to_fluvio(fluvio, &config.meta.topic, records).await?;
+
+    info!("restarting connector");
+    let records = generate_raw_records(table, 6, 8)?;
+    produce_to_fluvio(fluvio, &config.meta.topic, records).await?;
+    let connector_name = &config.meta.name;
+    let connector_status = cdk_deploy_status(connector_name)?;
+    info!("connector: {connector_name}, status: {connector_status:?}");
+
+    let read_result = read_from_postgres(table, 8).await;
+    let received_records: Vec<TestRecord> = read_result?;
     remove_topic(fluvio, &config.meta.topic).await?;
+    cdk_deploy_shutdown(connector_name)?;
+
+    // then
+    assert_eq!(received_records.len(), 8);
+    for (i, record) in received_records.into_iter().enumerate() {
+        assert_eq!(record.device_id as usize, i);
+        assert_eq!(record.record, json!({"device": { "device_id" : i }}));
+    }
 
     let consumer = fluvio
         .consumer_offsets()
@@ -596,6 +606,32 @@ fn generate_records(table: &str, count: usize) -> Result<Vec<Insert>> {
     Ok(result)
 }
 
+fn generate_raw_records(table: &str, start: usize, end: usize) -> Result<Vec<String>> {
+    let mut result = Vec::with_capacity(end);
+    for i in start..end {
+        let op = Insert {
+            table: table.to_string(),
+            values: vec![
+                Value {
+                    column: "device_id".to_string(),
+                    raw_value: i.to_string(),
+                    type_: Type::Int,
+                },
+                Value {
+                    column: "record".to_string(),
+                    raw_value: format!("{{\"device\":{{\"device_id\":{i}}}}}"),
+                    type_: Type::Json,
+                },
+            ],
+        };
+        result.push(op);
+    }
+    Ok(result
+        .iter()
+        .map(|op| serde_json::to_string(&Operation::Insert(op.clone())))
+        .collect::<serde_json::Result<_>>()?)
+}
+
 fn generate_json_records(count: usize) -> Vec<String> {
     (0..count)
         .map(|i| format!("{{\"device\":{{\"device_id\":{i}}}}}"))
@@ -664,4 +700,10 @@ struct MetaConfig {
 #[derive(Debug, Deserialize)]
 struct TestConfig {
     meta: MetaConfig,
+}
+
+#[derive(sqlx::FromRow, Debug)]
+struct TestRecord {
+    device_id: i32,
+    record: serde_json::Value,
 }
