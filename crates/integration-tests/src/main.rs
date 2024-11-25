@@ -31,6 +31,7 @@ const POSTGRES_HOST_PORT: &str = "5432";
 const POSTGRES_PASSWORD: &str = "passpass";
 const POSTGRES_USER: &str = "pguser";
 const POSTGRES_DB: &str = POSTGRES_USER;
+const CDK_BIN: &str = "cdk";
 
 #[async_std::main]
 async fn main() -> Result<()> {
@@ -288,20 +289,28 @@ async fn test_postgres_consumer_offsets(fluvio: &Fluvio, pg_conn: &mut PgConnect
     let connector_status = cdk_deploy_status(connector_name)?;
     info!("connector: {connector_name}, status: {connector_status:?}");
 
-    // when
+    sleep(Duration::from_secs(3)).await;
     let records = generate_raw_records(table, 0, 2)?;
     produce_to_fluvio(fluvio, &config.meta.topic, records).await?;
     let records = generate_raw_records(table, 2, 4)?;
     produce_to_fluvio(fluvio, &config.meta.topic, records).await?;
-    sleep(Duration::from_secs(15)).await;
+    info!("waiting for connector to catch up");
+    sleep(Duration::from_secs(3)).await;
+
+    // when
+    info!("shutting down connector");
+    cdk_deploy_shutdown(connector_name)?;
 
     info!("producing more records with connector down");
+    sleep(Duration::from_secs(3)).await;
     let records = generate_raw_records(table, 4, 6)?;
     produce_to_fluvio(fluvio, &config.meta.topic, records).await?;
 
     info!("restarting connector");
+    cdk_deploy_start(&config_path, None).await?;
     let records = generate_raw_records(table, 6, 8)?;
     produce_to_fluvio(fluvio, &config.meta.topic, records).await?;
+    sleep(Duration::from_secs(3)).await;
     let connector_name = &config.meta.name;
     let connector_status = cdk_deploy_status(connector_name)?;
     info!("connector: {connector_name}, status: {connector_status:?}");
@@ -453,7 +462,7 @@ async fn cdk_deploy_start(config_path: &Path, env: Option<(&str, &str)>) -> Resu
         "deploying connector with config from {config_path:?}, connector_dir: {}",
         connector_dir.to_string_lossy()
     );
-    let mut command = Command::new("cdk");
+    let mut command = Command::new(CDK_BIN);
     command.current_dir(&connector_dir);
     command
         .arg("deploy")
@@ -476,7 +485,7 @@ async fn cdk_deploy_start(config_path: &Path, env: Option<(&str, &str)>) -> Resu
 
 fn cdk_deploy_shutdown(connector_name: &str) -> Result<()> {
     info!("shutting down connector {connector_name}");
-    let output = Command::new("cdk")
+    let output = Command::new(CDK_BIN)
         .arg("deploy")
         .arg("shutdown")
         .arg("--name")
@@ -492,7 +501,7 @@ fn cdk_deploy_shutdown(connector_name: &str) -> Result<()> {
 }
 
 fn cdk_deploy_status(connector_name: &str) -> Result<Option<String>> {
-    let output = Command::new("cdk").arg("deploy").arg("list").output()?;
+    let output = Command::new(CDK_BIN).arg("deploy").arg("list").output()?;
     if !output.status.success() {
         anyhow::bail!(
             "`cdk deploy list` failed with:\n {}",
@@ -646,8 +655,8 @@ async fn produce_to_fluvio<V: Into<Vec<u8>> + std::fmt::Debug + Send + Sync + 's
     let producer = fluvio.topic_producer(fluvio_topic).await?;
     for record in records {
         producer.send(RecordKey::NULL, record).await?;
-        producer.flush().await?;
     }
+    producer.flush().await?;
     Ok(())
 }
 
