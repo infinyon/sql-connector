@@ -89,6 +89,10 @@ meta:
     id: my-sql-sink
     offset:
       strategy: auto
+      start: beginning
+      flush-period:
+        secs: 10
+        nanos: 0
   secrets:
     - name: DATABASE_URL
 sql:

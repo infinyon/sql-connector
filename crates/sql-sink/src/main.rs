@@ -16,7 +16,7 @@ use fluvio_connector_common::{
     consumer::ConsumerStream,
     future::retry::ExponentialBackoff,
     tracing::{error, trace, warn},
-    Sink,
+    LocalBoxSink, Sink,
 };
 use fluvio_model_sql::Operation;
 
@@ -27,6 +27,17 @@ const BACKOFF_MAX: Duration = Duration::from_secs(3600 * 24);
 
 #[connector(sink)]
 async fn start(config: SqlConfig, mut stream: impl ConsumerStream) -> Result<()> {
+    let mut sink = start_sink(config).await?;
+    while let Some(item) = stream.next().await {
+        let operation: Operation = serde_json::from_slice(item?.as_ref())?;
+        trace!(?operation);
+        sink.send(operation).await?;
+    }
+
+    Ok(())
+}
+
+async fn start_sink(config: SqlConfig) -> Result<LocalBoxSink<Operation>> {
     let mut backoff = backoff_init()?;
     loop {
         let Some(wait) = backoff.next() else {
@@ -41,8 +52,7 @@ async fn start(config: SqlConfig, mut stream: impl ConsumerStream) -> Result<()>
             error!("Max retry reached");
             continue;
         }
-        let sink = SqlSink::new(&config)?;
-        let mut sink = match sink.connect(None).await {
+        let sink = match SqlSink::new(&config)?.connect(None).await {
             Ok(sink) => sink,
             Err(err) => {
                 warn!(
@@ -55,13 +65,7 @@ async fn start(config: SqlConfig, mut stream: impl ConsumerStream) -> Result<()>
             }
         };
         // reset the backoff on successful connect
-        backoff = backoff_init()?;
-
-        while let Some(item) = stream.next().await {
-            let operation: Operation = serde_json::from_slice(item?.as_ref())?;
-            trace!(?operation);
-            sink.send(operation).await?;
-        }
+        return Ok(sink);
     }
 }
 

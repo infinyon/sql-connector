@@ -12,7 +12,7 @@ inherits = "release"
 lto = true
 
 [workspace.dependencies]
-fluvio = { git = "https://github.com/infinyon/fluvio", branch = "wasmtime_21" }
-fluvio-connector-common = { git = "https://github.com/infinyon/fluvio", branch = "wasmtime_21" }
+fluvio = { git = "https://github.com/infinyon/fluvio", branch = "fix_shutdown_cdk" }
+fluvio-connector-common = { git = "https://github.com/infinyon/fluvio", branch = "fix_shutdown_cdk" }
 fluvio-future = "0.7.0"
-fluvio-smartmodule = { git = "https://github.com/infinyon/fluvio", branch = "wasmtime_21" }
+fluvio-smartmodule = { git = "https://github.com/infinyon/fluvio", branch = "fix_shutdown_cdk" }
