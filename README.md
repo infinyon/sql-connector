@@ -106,7 +106,25 @@ $ fluvio consumer list
   my-http-sink  http-sink-topic  0          0       3s
 ```
 
-## Insert Usage Example
+#### Example
+
+The SQL database (Postgres):
+
+```
+CREATE TABLE topic_message (device_id int, record json);
+```
+
+The connector reads records from the Fluvio topic and sends them to the SQL database. The records are expected to be in JSON format.
+
+Than, you can produce records like this:
+
+```json
+{"Insert":{"table":"test_postgres_consumer_offsets","values":[{"column":"device_id","raw_value":"0","type":"Int"},{"column":"record","raw_value":"{\"device\":{\"device_id\":0}}","type":"Json"}]}}
+```
+
+## Insert Usage Example with `json-sql` SmartModule
+
+A simpler way to use the connector is to apply a transformation to the records before sending them to the SQL database.
 Let's look at the example of the connector with one transformation named [infinyon/json-sql](https://github.com/infinyon/fluvio-connectors/blob/main/smartmodules/json-sql/README.md). The transformation takes
 records in JSON format and creates SQL insert operation to `topic_message` table. The value from `device.device_id`
 JSON field will be put to `device_id` column and the entire json body to `record` column.
