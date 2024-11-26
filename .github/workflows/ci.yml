@@ -84,6 +84,7 @@ jobs:
         timeout-minutes: 10
         uses: infinyon/fluvio@master
         with:
+          version: latest # we can remove it once fluvio shutdown cdk is stable
           cluster-type: local
       - name: Check Fluvio Installation
         run: |
