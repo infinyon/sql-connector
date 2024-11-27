@@ -108,7 +108,7 @@ where
     D: serde::Deserializer<'de>,
 {
     struct StringOrInt;
-    impl<'de> de::Visitor<'de> for StringOrInt {
+    impl de::Visitor<'_> for StringOrInt {
         type Value = Option<String>;
 
         fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {

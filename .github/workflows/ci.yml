@@ -99,7 +99,7 @@ jobs:
         run: rustup target add wasm32-wasi
       - name: Run Integration Test
         timeout-minutes: 30
-        run: make integration_tests
+        run: START_FLUVIO=false make integration_tests
 
   done:
     name: Done
