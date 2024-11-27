@@ -2,8 +2,8 @@
 members = [
     "crates/sql-sink",
     "crates/fluvio-model-sql",
-    "crates/integration-tests",
     "crates/json-sql",
+    "tests/integration",
 ]
 resolver = "2"
 
@@ -16,3 +16,11 @@ fluvio = { git = "https://github.com/infinyon/fluvio", branch = "fix_shutdown_cd
 fluvio-connector-common = { git = "https://github.com/infinyon/fluvio", branch = "fix_shutdown_cdk" }
 fluvio-future = "0.7.0"
 fluvio-smartmodule = { git = "https://github.com/infinyon/fluvio", branch = "fix_shutdown_cdk" }
+
+
+# fluvio = { path = "../../fluvio/crates/fluvio/" }
+# fluvio-connector-common = { path = "../../fluvio/crates/fluvio-connector-common/" }
+# fluvio-smartmodule = { path = "../../fluvio/crates/fluvio-smartmodule/" }
+
+# Internal dependencies
+fluvio-model-sql = { path = "crates/fluvio-model-sql" }
