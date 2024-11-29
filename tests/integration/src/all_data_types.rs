@@ -1,17 +1,41 @@
 use std::time::Duration;
 
-use anyhow::{Context, Result};
 use async_std::task;
 use fluvio_model_sql::{Operation, Upsert};
-use log::{debug, info};
-use serde::Deserialize;
+use log::info;
+use once_cell::sync::Lazy;
 
 use crate::utils::{
     self, ctx::TestContext, generate_records, new_config_path, produce_to_fluvio,
     read_from_postgres,
 };
 
-pub async fn test_postgres_all_data_types(ctx: &mut TestContext) -> Result<()> {
+const TABLE: &str = "test_postgres_all_data_types";
+static CREATE_TABLE: Lazy<String> = Lazy::new(|| {
+    format!(
+        r#"
+        CREATE TABLE {TABLE} (
+            bool_col bool NOT NULL,
+            smallint_col smallint NOT NULL,
+            int_col int NOT NULL,
+            bigint_col bigint NOT NULL,
+            float_col float4 NOT NULL,
+            double_col float8 NOT NULL,
+            text_col varchar NOT NULL,
+            bytes_col bytea NOT NULL,
+            numeric_col numeric NOT NULL,
+            timestamp_col timestamp NOT NULL,
+            date_col date NOT NULL,
+            time_col time NOT NULL,
+            uuid_col uuid NOT NULL PRIMARY KEY,
+            json_col json NOT NULL,
+            char_col "char" NOT NULL
+        )
+        "#
+    )
+});
+
+pub(crate) async fn test_postgres_all_data_types(ctx: &mut TestContext) {
     #[derive(sqlx::FromRow, Debug)]
     #[allow(dead_code)]
     struct TestRecord {
@@ -33,41 +57,18 @@ pub async fn test_postgres_all_data_types(ctx: &mut TestContext) -> Result<()> {
     }
 
     info!("running 'test_postgres_all_data_types' test");
-    let config_path = new_config_path("test_postgres_all_data_types.yaml")?;
-    debug!("{config_path:?}");
-    let config: TestConfig = serde_yaml::from_reader(std::fs::File::open(&config_path)?)?;
-    let table = "test_postgres_all_data_types";
-    sqlx::query(&format!(
-        "CREATE TABLE {} (
-                bool_col bool NOT NULL,
-                smallint_col smallint NOT NULL,
-                int_col int NOT NULL,
-                bigint_col bigint NOT NULL,
-                float_col float4 NOT NULL,
-                double_col float8 NOT NULL,
-                text_col varchar NOT NULL,
-                bytes_col bytea NOT NULL,
-                numeric_col numeric NOT NULL,
-                timestamp_col timestamp NOT NULL,
-                date_col date NOT NULL,
-                time_col time NOT NULL,
-                uuid_col uuid NOT NULL PRIMARY KEY,
-                json_col json NOT NULL,
-                char_col \"char\" NOT NULL
-                )",
-        table
-    ))
-    .execute(&mut ctx.pg_conn)
-    .await
-    .context(format!("unable to create table {table})"))?;
+    let config_path = new_config_path("test_postgres_all_data_types.yaml").unwrap();
+    sqlx::query(&CREATE_TABLE)
+        .execute(&mut ctx.pg_conn)
+        .await
+        .unwrap();
 
-    utils::cdk::cdk_deploy_start(&config_path, None).await?;
-    let connector_name = &config.meta.name;
-    let connector_status = utils::cdk::cdk_deploy_status(connector_name)?;
-    info!("connector: {connector_name}, status: {connector_status:?}");
+    let config = utils::cdk::cdk_deploy_start(&config_path, None)
+        .await
+        .unwrap();
 
     let count = 10;
-    let records = generate_records(table, count)?;
+    let records = generate_records(TABLE, count).unwrap();
 
     assert_eq!(records.len(), count);
 
@@ -78,10 +79,12 @@ pub async fn test_postgres_all_data_types(ctx: &mut TestContext) -> Result<()> {
             records
                 .iter()
                 .map(|op| serde_json::to_string(&Operation::Insert(op.clone())))
-                .collect::<serde_json::Result<_>>()?,
+                .collect::<serde_json::Result<_>>()
+                .unwrap(),
         )
-        .await?;
-        let mut received_records: Vec<TestRecord> = read_from_postgres(table, count).await?;
+        .await
+        .unwrap();
+        let mut received_records: Vec<TestRecord> = read_from_postgres(TABLE, count).await.unwrap();
 
         received_records.sort_by_key(|r| r.smallint_col);
 
@@ -105,12 +108,15 @@ pub async fn test_postgres_all_data_types(ctx: &mut TestContext) -> Result<()> {
                 };
                 serde_json::to_string(&Operation::Upsert(op))
             })
-            .collect::<serde_json::Result<_>>()?;
-        produce_to_fluvio(&ctx.fluvio, &config.meta.topic, records).await?;
+            .collect::<serde_json::Result<_>>()
+            .unwrap();
+        produce_to_fluvio(&ctx.fluvio, &config.meta.topic, records)
+            .await
+            .unwrap();
 
         task::sleep(Duration::from_secs(3)).await;
 
-        let mut received_records: Vec<TestRecord> = read_from_postgres(table, count).await?;
+        let mut received_records: Vec<TestRecord> = read_from_postgres(TABLE, count).await.unwrap();
 
         received_records.sort_by_key(|r| r.smallint_col);
 
@@ -138,12 +144,15 @@ pub async fn test_postgres_all_data_types(ctx: &mut TestContext) -> Result<()> {
                 op.values[4].raw_value = (i + 4).to_string();
                 serde_json::to_string(&Operation::Upsert(op))
             })
-            .collect::<serde_json::Result<_>>()?;
-        produce_to_fluvio(&ctx.fluvio, &config.meta.topic, records).await?;
+            .collect::<serde_json::Result<_>>()
+            .unwrap();
+        produce_to_fluvio(&ctx.fluvio, &config.meta.topic, records)
+            .await
+            .unwrap();
 
         task::sleep(Duration::from_secs(3)).await;
 
-        let mut received_records: Vec<TestRecord> = read_from_postgres(table, count).await?;
+        let mut received_records: Vec<TestRecord> = read_from_postgres(TABLE, count).await.unwrap();
 
         received_records.sort_by_key(|r| r.smallint_col);
 
@@ -155,20 +164,10 @@ pub async fn test_postgres_all_data_types(ctx: &mut TestContext) -> Result<()> {
         }
     }
 
-    utils::cdk::cdk_deploy_shutdown(connector_name)?;
-    utils::fluvio_conn::remove_topic(&ctx.fluvio, &config.meta.topic).await?;
+    utils::cdk::cdk_deploy_shutdown(&config.meta.name).unwrap();
+    utils::fluvio_conn::remove_topic(&ctx.fluvio, &config.meta.topic)
+        .await
+        .unwrap();
 
     info!("test 'test_postgres_all_data_types' passed");
-    Ok(())
-}
-
-#[derive(Debug, Deserialize)]
-struct MetaConfig {
-    name: String,
-    topic: String,
-}
-
-#[derive(Debug, Deserialize)]
-struct TestConfig {
-    meta: MetaConfig,
 }

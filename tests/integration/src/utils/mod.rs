@@ -1,9 +1,9 @@
-pub mod cdk;
-pub mod ctx;
-pub mod db;
-pub mod docker_conn;
-pub mod fluvio_conn;
-pub mod smdk;
+pub(crate) mod cdk;
+pub(crate) mod ctx;
+pub(crate) mod db;
+pub(crate) mod docker_conn;
+pub(crate) mod fluvio_conn;
+pub(crate) mod smdk;
 
 use std::path::PathBuf;
 
@@ -14,7 +14,7 @@ use fluvio::{Fluvio, RecordKey};
 use fluvio_future::retry::{retry, ExponentialBackoff};
 use fluvio_model_sql::{Insert, Operation, Type, Value};
 
-pub fn new_config_path(name: &str) -> Result<PathBuf> {
+pub(crate) fn new_config_path(name: &str) -> Result<PathBuf> {
     let package_dir = std::env::var("CARGO_MANIFEST_DIR")?;
     println!("package_dir: {}", package_dir);
     let mut path = PathBuf::new();
@@ -46,7 +46,7 @@ fn sm_dir() -> Result<PathBuf> {
     Ok(path.canonicalize()?)
 }
 
-pub fn generate_records(table: &str, count: usize) -> Result<Vec<Insert>> {
+pub(crate) fn generate_records(table: &str, count: usize) -> Result<Vec<Insert>> {
     let mut result = Vec::with_capacity(count);
     for i in 0..count {
         let op = Insert {
@@ -138,7 +138,7 @@ pub fn generate_records(table: &str, count: usize) -> Result<Vec<Insert>> {
     Ok(result)
 }
 
-pub fn generate_raw_records(table: &str, start: usize, end: usize) -> Result<Vec<String>> {
+pub(crate) fn generate_raw_records(table: &str, start: usize, end: usize) -> Result<Vec<String>> {
     let mut result = Vec::with_capacity(end);
     for i in start..end {
         let op = Insert {
@@ -164,13 +164,15 @@ pub fn generate_raw_records(table: &str, start: usize, end: usize) -> Result<Vec
         .collect::<serde_json::Result<_>>()?)
 }
 
-pub fn generate_json_records(count: usize) -> Vec<String> {
+pub(crate) fn generate_json_records(count: usize) -> Vec<String> {
     (0..count)
         .map(|i| format!("{{\"device\":{{\"device_id\":{i}}}}}"))
         .collect()
 }
 
-pub async fn produce_to_fluvio<V: Into<Vec<u8>> + std::fmt::Debug + Send + Sync + 'static>(
+pub(crate) async fn produce_to_fluvio<
+    V: Into<Vec<u8>> + std::fmt::Debug + Send + Sync + 'static,
+>(
     fluvio: &Fluvio,
     fluvio_topic: &str,
     records: Vec<V>,
@@ -183,7 +185,7 @@ pub async fn produce_to_fluvio<V: Into<Vec<u8>> + std::fmt::Debug + Send + Sync 
     Ok(())
 }
 
-pub async fn read_from_postgres<R>(table: &str, count: usize) -> Result<Vec<R>>
+pub(crate) async fn read_from_postgres<R>(table: &str, count: usize) -> Result<Vec<R>>
 where
     R: for<'r> FromRow<'r, PgRow> + Unpin + Send,
 {

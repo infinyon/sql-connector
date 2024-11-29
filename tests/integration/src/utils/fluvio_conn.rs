@@ -11,21 +11,21 @@ use fluvio::{metadata::topic::TopicSpec, Fluvio};
 static FLUVIO_BIN: Lazy<String> =
     Lazy::new(|| std::env::var("FLUVIO_BIN").unwrap_or("fluvio".to_string()));
 
-pub async fn connect_fluvio() -> Result<Fluvio> {
+pub(crate) async fn connect_fluvio() -> Result<Fluvio> {
     info!("checking fluvio cluster availability");
     let fluvio = fluvio::Fluvio::connect().await?;
     info!("connected to fluvio version: {}", fluvio.platform_version());
     Ok(fluvio)
 }
 
-pub async fn remove_topic(fluvio: &Fluvio, topic: &str) -> Result<()> {
+pub(crate) async fn remove_topic(fluvio: &Fluvio, topic: &str) -> Result<()> {
     info!("removing topic: {}", topic);
     fluvio.admin().await.delete::<TopicSpec>(topic).await?;
     info!("topic removed: {}", topic);
     Ok(())
 }
 
-pub async fn start_cluster() -> Result<()> {
+pub(crate) async fn start_cluster() -> Result<()> {
     info!("starting fluvio cluster");
     let output = Command::new(FLUVIO_BIN.to_string())
         .arg("cluster")
@@ -43,7 +43,7 @@ pub async fn start_cluster() -> Result<()> {
     Ok(())
 }
 
-pub async fn delete_cluster() -> Result<()> {
+pub(crate) async fn delete_cluster() -> Result<()> {
     info!("deleting fluvio cluster");
 
     let output = Command::new(FLUVIO_BIN.to_string())

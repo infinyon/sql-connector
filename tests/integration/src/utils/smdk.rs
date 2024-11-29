@@ -10,7 +10,7 @@ use crate::utils::sm_dir;
 static SMDK_BIN: Lazy<String> =
     Lazy::new(|| std::env::var("SMDK_BIN").unwrap_or("smdk".to_string()));
 
-pub async fn load(smdk_name: &str) -> Result<()> {
+pub(crate) async fn load(smdk_name: &str) -> Result<()> {
     let connector_dir = sm_dir()?;
     info!("loading smart module {smdk_name}");
     let mut command = Command::new(SMDK_BIN.to_string());

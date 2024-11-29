@@ -1,9 +1,8 @@
 use std::time::Duration;
 
-use anyhow::{Context, Result};
 use fluvio_future::timer::sleep;
-use log::{debug, info};
-use serde::Deserialize;
+use log::info;
+use once_cell::sync::Lazy;
 use serde_json::json;
 
 use crate::utils::{
@@ -11,54 +10,70 @@ use crate::utils::{
     read_from_postgres,
 };
 
-pub async fn test_postgres_consumer_offsets(ctx: &mut TestContext) -> Result<()> {
+const TABLE: &str = "test_postgres_consumer_offsets";
+static CREATE_TABLE: Lazy<String> =
+    Lazy::new(|| format!("CREATE TABLE {TABLE} (device_id int, record json)"));
+
+pub(crate) async fn test_postgres_consumer_offsets(ctx: &mut TestContext) {
     // given
     info!("running 'test_postgres_consumer_offsets' test");
-    let config_path = new_config_path("test_postgres_consumer_offsets.yaml")?;
-    debug!("{config_path:?}");
-    let config: TestConfig = serde_yaml::from_reader(std::fs::File::open(&config_path)?)?;
-    let table = "test_postgres_consumer_offsets";
-    sqlx::query(&format!(
-        "CREATE TABLE {} (device_id int, record json)",
-        table
-    ))
-    .execute(&mut (ctx.pg_conn))
-    .await
-    .context(format!("unable to create table {table})"))?;
+    let config_path = new_config_path("test_postgres_consumer_offsets.yaml").unwrap();
+    sqlx::query(&CREATE_TABLE)
+        .execute(&mut (ctx.pg_conn))
+        .await
+        .unwrap();
 
-    utils::cdk::cdk_deploy_start(&config_path, None).await?;
+    let config = utils::cdk::cdk_deploy_start(&config_path, None)
+        .await
+        .unwrap();
     let connector_name = &config.meta.name;
-    let connector_status = utils::cdk::cdk_deploy_status(connector_name)?;
+    let connector_status = utils::cdk::cdk_deploy_status(connector_name).unwrap();
     info!("connector: {connector_name}, status: {connector_status:?}");
 
     sleep(Duration::from_secs(3)).await;
-    let records = generate_raw_records(table, 0, 2)?;
-    produce_to_fluvio(&ctx.fluvio, &config.meta.topic, records).await?;
-    let records = generate_raw_records(table, 2, 4)?;
-    produce_to_fluvio(&ctx.fluvio, &config.meta.topic, records).await?;
+    let records = generate_raw_records(TABLE, 0, 2).unwrap();
+    produce_to_fluvio(&ctx.fluvio, &config.meta.topic, records)
+        .await
+        .unwrap();
+    let records = generate_raw_records(TABLE, 2, 4).unwrap();
+    produce_to_fluvio(&ctx.fluvio, &config.meta.topic, records)
+        .await
+        .unwrap();
     info!("waiting for connector to catch up");
     sleep(Duration::from_secs(3)).await;
 
     // when
     info!("shutting down connector");
-    utils::cdk::cdk_deploy_shutdown(connector_name)?;
+    utils::cdk::cdk_deploy_shutdown(connector_name).unwrap();
 
     info!("producing more records with connector down");
     sleep(Duration::from_secs(3)).await;
-    let records = generate_raw_records(table, 4, 6)?;
-    produce_to_fluvio(&ctx.fluvio, &config.meta.topic, records).await?;
+    let records = generate_raw_records(TABLE, 4, 6).unwrap();
+    produce_to_fluvio(&ctx.fluvio, &config.meta.topic, records)
+        .await
+        .unwrap();
 
     info!("restarting connector");
-    utils::cdk::cdk_deploy_start(&config_path, None).await?;
-    let records = generate_raw_records(table, 6, 8)?;
-    produce_to_fluvio(&ctx.fluvio, &config.meta.topic, records).await?;
+    utils::cdk::cdk_deploy_start(&config_path, None)
+        .await
+        .unwrap();
+    let records = generate_raw_records(TABLE, 6, 8).unwrap();
+    produce_to_fluvio(&ctx.fluvio, &config.meta.topic, records)
+        .await
+        .unwrap();
     sleep(Duration::from_secs(3)).await;
     let connector_name = &config.meta.name;
-    let connector_status = utils::cdk::cdk_deploy_status(connector_name)?;
+    let connector_status = utils::cdk::cdk_deploy_status(connector_name).unwrap();
     info!("connector: {connector_name}, status: {connector_status:?}");
 
-    let read_result = read_from_postgres(table, 8).await;
-    let received_records: Vec<TestRecord> = read_result?;
+    utils::cdk::cdk_deploy_shutdown(connector_name).unwrap();
+    utils::fluvio_conn::remove_topic(&ctx.fluvio, &config.meta.topic)
+        .await
+        .unwrap();
+    sleep(Duration::from_secs(3)).await;
+
+    let read_result = read_from_postgres(TABLE, 8).await;
+    let received_records: Vec<TestRecord> = read_result.unwrap();
 
     // then
     assert_eq!(received_records.len(), 8);
@@ -70,29 +85,15 @@ pub async fn test_postgres_consumer_offsets(ctx: &mut TestContext) -> Result<()>
     let consumer = ctx
         .fluvio
         .consumer_offsets()
-        .await?
+        .await
+        .unwrap()
         .into_iter()
         .find(|c| c.consumer_id.eq("test-postgres-consumer-offsets"));
-
-    utils::cdk::cdk_deploy_shutdown(connector_name)?;
-    utils::fluvio_conn::remove_topic(&ctx.fluvio, &config.meta.topic).await?;
 
     // then
     assert!(consumer.is_some());
     assert!(consumer.unwrap().offset >= 0);
     info!("test 'test_postgres_consumer_offsets' passed");
-    Ok(())
-}
-
-#[derive(Debug, Deserialize)]
-struct MetaConfig {
-    name: String,
-    topic: String,
-}
-
-#[derive(Debug, Deserialize)]
-struct TestConfig {
-    meta: MetaConfig,
 }
 
 #[derive(sqlx::FromRow, Debug)]

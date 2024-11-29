@@ -2,7 +2,7 @@ use anyhow::Result;
 use bollard::Docker;
 use log::info;
 
-pub async fn connect_docker() -> Result<Docker> {
+pub(crate) async fn connect_docker() -> Result<Docker> {
     info!("checking docker engine availability");
 
     let docker = Docker::connect_with_local_defaults()?;
