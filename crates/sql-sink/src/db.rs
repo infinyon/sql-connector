@@ -1,8 +1,8 @@
 use std::str::FromStr;
 
 use anyhow::anyhow;
-use sqlx::any::{AnyConnectOptions, AnyKind};
-use sqlx::database::HasArguments;
+use sqlx::postgres::PgConnectOptions;
+use sqlx::sqlite::SqliteConnectOptions;
 use sqlx::{
     Connection, Database, Executor, IntoArguments, PgConnection, Postgres, Sqlite, SqliteConnection,
 };
@@ -21,22 +21,16 @@ pub enum Db {
 
 impl Db {
     pub async fn connect(url: &str) -> anyhow::Result<Self> {
-        let options = AnyConnectOptions::from_str(url)?;
-        match options.kind() {
-            AnyKind::Postgres => {
-                let options = options
-                    .as_postgres()
-                    .ok_or_else(|| anyhow!("invalid postgres connect options"))?;
-                let conn = PgConnection::connect_with(options).await?;
-                Ok(Db::Postgres(conn.into()))
-            }
-            AnyKind::Sqlite => {
-                let options = options
-                    .as_sqlite()
-                    .ok_or_else(|| anyhow!("invalid sqlite connect options"))?;
-                let conn = SqliteConnection::connect_with(options).await?;
-                Ok(Db::Sqlite(conn.into()))
-            }
+        if url.starts_with("postgres:") || url.starts_with("postgresql:") {
+            let pg_options = PgConnectOptions::from_str(url)?;
+            let conn = PgConnection::connect_with(&pg_options).await?;
+            Ok(Db::Postgres(conn.into()))
+        } else if url.starts_with("sqlite:") {
+            let sqlite_options = SqliteConnectOptions::from_str(url)?;
+            let conn = SqliteConnection::connect_with(&sqlite_options).await?;
+            Ok(Db::Sqlite(conn.into()))
+        } else {
+            Err(anyhow!("unsupported database backend"))
         }
     }
 
@@ -118,7 +112,7 @@ impl Db {
 async fn do_insert<'c, DB, E, I>(conn: E, table: &str, values: &[Value]) -> anyhow::Result<()>
 where
     DB: Database,
-    for<'q> <DB as HasArguments<'q>>::Arguments: IntoArguments<'q, DB>,
+    for<'q> <DB>::Arguments<'q>: IntoArguments<'q, DB>,
     E: Executor<'c, Database = DB>,
     I: Insert<DB> + Bind<DB>,
 {
@@ -146,7 +140,7 @@ async fn do_upsert<'c, DB, E, I>(
 ) -> anyhow::Result<()>
 where
     DB: Database,
-    for<'q> <DB as HasArguments<'q>>::Arguments: IntoArguments<'q, DB>,
+    for<'q> <DB>::Arguments<'q>: IntoArguments<'q, DB>,
     E: Executor<'c, Database = DB>,
     I: Upsert<DB> + Bind<DB>,
 {
@@ -175,10 +169,10 @@ mod tests {
     use fluvio_connector_common::future::init_logger;
     use fluvio_model_sql::Type;
     use rust_decimal::Decimal;
-    use sqlx::{any::AnyRow, Executor, Row};
+    use sqlx::{Executor, Row};
     use uuid::Uuid;
 
-    const CREATE_TABLE: &str = "
+    const CREATE_TABLE_SQLITE: &str = "
     CREATE TABLE IF NOT EXISTS big_table (
         json_col TEXT,
         bool_col BOOLEAN,
@@ -191,6 +185,23 @@ mod tests {
         float_col REAL,
         double_col REAL,
         numeric_col REAL,
+        timestamp_col TIMESTAMP,
+        uuid_col TEXT PRIMARY KEY
+    );";
+
+    const CREATE_TABLE_PG: &str = "
+    CREATE TABLE IF NOT EXISTS big_table (
+        json_col TEXT,
+        bool_col BOOLEAN,
+        char_col CHAR(3),
+        smallint_col INTEGER,
+        int_col INTEGER,
+        big_int_col BIGINT,
+        text_col TEXT,
+        bytes_col BYTEA,
+        float_col REAL,
+        double_col DOUBLE PRECISION,
+        numeric_col FLOAT8,
         timestamp_col TIMESTAMP,
         uuid_col TEXT PRIMARY KEY
     );";
@@ -288,9 +299,26 @@ mod tests {
         }
     }
 
-    fn check_row(row: AnyRow) {
+    fn check_row<'r, DB, T>(row: &'r T)
+    where
+        DB: Database,
+        T: Row<Database = DB>,
+        usize: sqlx::ColumnIndex<T>,
+        String: sqlx::Decode<'r, DB> + sqlx::Type<DB>,
+        bool: sqlx::Decode<'r, DB> + sqlx::Type<DB>,
+        i32: sqlx::Decode<'r, DB> + sqlx::Type<DB>,
+        i64: sqlx::Decode<'r, DB> + sqlx::Type<DB>,
+        Vec<u8>: sqlx::Decode<'r, DB> + sqlx::Type<DB>,
+        f32: sqlx::Decode<'r, DB> + sqlx::Type<DB>,
+        f64: sqlx::Decode<'r, DB> + sqlx::Type<DB>,
+        NaiveDateTime: sqlx::Decode<'r, DB> + sqlx::Type<DB>,
+        Uuid: sqlx::Decode<'r, DB> + sqlx::Type<DB>,
+    {
         let json_col: String = row.get(0);
-        assert_eq!(json_col, "{\"json_key\":\"json_value\"}".to_string());
+        assert_eq!(
+            json_col.replace(" ", ""),
+            "{\"json_key\":\"json_value\"}".to_string()
+        );
         let bool_col: bool = row.get(1);
         assert!(bool_col);
         let char_col: i32 = row.get(2);
@@ -311,7 +339,8 @@ mod tests {
         assert_eq!(double, 3.333333333);
         let numeric: f64 = row.get(10);
         assert_eq!(numeric, 10f64);
-        let timestamp: NaiveDateTime = row.get(11);
+        let timestamp: String = row.get(11);
+        let timestamp = NaiveDateTime::parse_from_str(&timestamp, NAIVE_DATE_TIME_FORMAT).unwrap();
         assert_eq!(timestamp, chrono::NaiveDateTime::MIN);
         let uuid: Vec<u8> = row.get(12);
         let uuid = Uuid::from_slice(&uuid).unwrap();
@@ -331,7 +360,10 @@ mod tests {
         //given
         let mut db = Db::connect(url).await?;
 
-        db.as_postgres_conn().unwrap().execute(CREATE_TABLE).await?;
+        db.as_postgres_conn()
+            .unwrap()
+            .execute(CREATE_TABLE_PG)
+            .await?;
 
         let operation = Operation::Insert(make_insert());
 
@@ -339,8 +371,8 @@ mod tests {
         db.execute(&operation).await?;
 
         //then
-        let row = db.as_postgres_conn().unwrap().fetch_one(SELECT).await?;
-        check_row(row.into());
+        let row = &db.as_postgres_conn().unwrap().fetch_one(SELECT).await?;
+        check_row(row);
 
         Ok(())
     }
@@ -354,7 +386,10 @@ mod tests {
 
         let mut db = Db::connect(url).await?;
 
-        db.as_postgres_conn().unwrap().execute(CREATE_TABLE).await?;
+        db.as_postgres_conn()
+            .unwrap()
+            .execute(CREATE_TABLE_PG)
+            .await?;
 
         let insert = make_insert();
         let upsert = UpsertData {
@@ -368,8 +403,8 @@ mod tests {
         for _ in 0..2 {
             db.execute(&operation).await?;
 
-            let row = db.as_postgres_conn().unwrap().fetch_one(SELECT).await?;
-            check_row(row.into());
+            let row = &db.as_postgres_conn().unwrap().fetch_one(SELECT).await?;
+            check_row(row);
         }
 
         // update using upsert
@@ -395,7 +430,10 @@ mod tests {
         //given
         let mut db = Db::connect(url).await?;
 
-        db.as_sqlite_conn().unwrap().execute(CREATE_TABLE).await?;
+        db.as_sqlite_conn()
+            .unwrap()
+            .execute(CREATE_TABLE_SQLITE)
+            .await?;
 
         let operation = Operation::Insert(make_insert());
 
@@ -404,7 +442,7 @@ mod tests {
 
         //then
         let row = db.as_sqlite_conn().unwrap().fetch_one(SELECT).await?;
-        check_row(row.into());
+        check_row(&row);
 
         Ok(())
     }
@@ -417,7 +455,10 @@ mod tests {
 
         let mut db = Db::connect(url).await?;
 
-        db.as_sqlite_conn().unwrap().execute(CREATE_TABLE).await?;
+        db.as_sqlite_conn()
+            .unwrap()
+            .execute(CREATE_TABLE_SQLITE)
+            .await?;
 
         let insert = make_insert();
         let upsert = UpsertData {
@@ -431,8 +472,8 @@ mod tests {
         for _ in 0..2 {
             db.execute(&operation).await?;
 
-            let row = db.as_sqlite_conn().unwrap().fetch_one(SELECT).await?;
-            check_row(row.into());
+            let row = &db.as_sqlite_conn().unwrap().fetch_one(SELECT).await?;
+            check_row(row);
         }
 
         // update using upsert

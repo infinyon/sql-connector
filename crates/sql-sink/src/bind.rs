@@ -1,7 +1,6 @@
 use std::str::FromStr;
 
 use rust_decimal::Decimal;
-use sqlx::database::HasArguments;
 use sqlx::postgres::PgArguments;
 use sqlx::query::Query;
 use sqlx::sqlite::SqliteArguments;
@@ -15,9 +14,9 @@ pub const NAIVE_DATE_TIME_FORMAT: &str = "%Y-%m-%d %H:%M:%S%.f";
 
 pub trait Bind<DB: Database> {
     fn bind_value<'a>(
-        query: Query<'a, DB, <DB as HasArguments<'a>>::Arguments>,
+        query: Query<'a, DB, <DB>::Arguments<'a>>,
         value: &'a Value,
-    ) -> anyhow::Result<Query<'a, DB, <DB as HasArguments<'a>>::Arguments>>;
+    ) -> anyhow::Result<Query<'a, DB, <DB>::Arguments<'a>>>;
 }
 
 impl Bind<Postgres> for Db {
