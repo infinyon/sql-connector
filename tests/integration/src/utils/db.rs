@@ -19,7 +19,7 @@ const POSTGRES_PASSWORD: &str = "passpass";
 const POSTGRES_USER: &str = "pguser";
 const POSTGRES_DB: &str = POSTGRES_USER;
 
-pub async fn run_postgres(docker: &Docker) -> Result<PgConnection> {
+pub(crate) async fn run_postgres(docker: &Docker) -> Result<PgConnection> {
     info!("starting postgres container");
 
     let config: Config<String> = Config {
@@ -81,7 +81,7 @@ pub async fn run_postgres(docker: &Docker) -> Result<PgConnection> {
     Ok(conn)
 }
 
-pub async fn connect_postgres() -> Result<PgConnection> {
+pub(crate) async fn connect_postgres() -> Result<PgConnection> {
     let connection_str = postgres_connection_str();
     debug!("connecting to {connection_str}");
     let mut conn = PgConnection::connect(&connection_str).await?;
@@ -97,7 +97,8 @@ fn postgres_connection_str() -> String {
         "postgresql://{POSTGRES_USER}:{POSTGRES_PASSWORD}@127.0.0.1:{POSTGRES_HOST_PORT}/{POSTGRES_DB}"
     )
 }
-pub async fn remove_postgres(docker: &Docker) -> Result<()> {
+
+pub(crate) async fn remove_postgres(docker: &Docker) -> Result<()> {
     let _ = &docker
         .remove_container(
             "postgres",

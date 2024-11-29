@@ -4,12 +4,16 @@ use anyhow::Result;
 use async_std::task;
 use log::info;
 use once_cell::sync::Lazy;
+use serde::Deserialize;
 
-use crate::utils::connector_dir;
+use crate::utils::{cdk, connector_dir};
 
 static CDK_BIN: Lazy<String> = Lazy::new(|| std::env::var("CDK_BIN").unwrap_or("cdk".to_string()));
 
-pub async fn cdk_deploy_start(config_path: &Path, env: Option<(&str, &str)>) -> Result<()> {
+pub(crate) async fn cdk_deploy_start(
+    config_path: &Path,
+    env: Option<(&str, &str)>,
+) -> Result<TestConfig> {
     let connector_dir = connector_dir()?;
     info!(
         "deploying connector with config from {config_path:?}, connector_dir: {}",
@@ -33,10 +37,15 @@ pub async fn cdk_deploy_start(config_path: &Path, env: Option<(&str, &str)>) -> 
         )
     }
     task::sleep(Duration::from_secs(10)).await; // time for connector to start
-    Ok(())
+    let config: TestConfig =
+        serde_yaml::from_reader(std::fs::File::open(config_path).unwrap()).unwrap();
+    let connector_name = &config.meta.name;
+    let connector_status = cdk::cdk_deploy_status(connector_name).unwrap();
+    info!("connector: {connector_name}, status: {connector_status:?}");
+    Ok(config)
 }
 
-pub fn cdk_deploy_shutdown(connector_name: &str) -> Result<()> {
+pub(crate) fn cdk_deploy_shutdown(connector_name: &str) -> Result<()> {
     info!("shutting down connector {connector_name}");
     let output = Command::new(CDK_BIN.to_string())
         .arg("deploy")
@@ -53,7 +62,7 @@ pub fn cdk_deploy_shutdown(connector_name: &str) -> Result<()> {
     Ok(())
 }
 
-pub fn cdk_deploy_status(connector_name: &str) -> Result<Option<String>> {
+pub(crate) fn cdk_deploy_status(connector_name: &str) -> Result<Option<String>> {
     let output = Command::new(CDK_BIN.to_string())
         .arg("deploy")
         .arg("list")
@@ -77,4 +86,15 @@ pub fn cdk_deploy_status(connector_name: &str) -> Result<Option<String>> {
         }
     }
     Ok(None)
+}
+
+#[derive(Debug, Deserialize)]
+pub(crate) struct MetaConfig {
+    pub(crate) name: String,
+    pub(crate) topic: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub(crate) struct TestConfig {
+    pub(crate) meta: MetaConfig,
 }
