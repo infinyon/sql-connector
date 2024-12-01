@@ -12,6 +12,30 @@ inherits = "release"
 lto = true
 
 [workspace.dependencies]
+adaptive_backoff = "0.2.1"
+anyhow = { version = "1.0", default-features = false }
+async-std = { version = "1.13", default-features = false, features = ["attributes"] }
+async-trait = { version = "0.1", default-features = false }
+bollard = { version = "0.18", default-features = false }
+chrono = { version = "0.4", features = ["serde"], default-features = false }
+env_logger = { version = "0.11", default-features = false, features = ["auto-color", "humantime"] }
+eyre = { version = "0.6", default-features = false }
+futures = { version = "0.3", default-features = false }
+futures-util = { version = "0.3", default-features = false }
+humantime = "2.1.0"
+itertools = "0.13"
+log = { version = "0.4", default-features = false }
+once_cell = { version = "1.20", default-features = false }
+rust_decimal = { version = "1.36", default-features = false }
+serde = { version = "1", default-features = false, features = ["derive"] }
+serde_json = { version = "1", default-features = false }
+serde_yaml = { version = "0.9", default-features = false }
+sqlx = { version = "0.8.2", features = ["runtime-async-std-rustls", "postgres", "sqlite", "json", "any", "rust_decimal", "chrono", "uuid"] }
+url = { version = "2.5", default-features = false, features = ["serde"] }
+uuid = { version = "1.11", default-features = false }
+
+
+# Fluvio dependencies
 fluvio = { git = "https://github.com/infinyon/fluvio", branch = "fix_shutdown_cdk" }
 fluvio-connector-common = { git = "https://github.com/infinyon/fluvio", branch = "fix_shutdown_cdk" }
 fluvio-future = "0.7.0"
@@ -24,3 +48,5 @@ fluvio-smartmodule = { git = "https://github.com/infinyon/fluvio", branch = "fix
 
 # Internal dependencies
 fluvio-model-sql = { path = "crates/fluvio-model-sql" }
+
+

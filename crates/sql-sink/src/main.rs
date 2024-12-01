@@ -30,29 +30,26 @@ const BACKOFF_MAX: Duration = Duration::from_secs(3600 * 24);
 #[connector(sink)]
 async fn start(config: SqlConfig, mut stream: impl ConsumerStream) -> Result<()> {
     let mut backoff = backoff_init()?;
-    let mut sink = start_sink(&mut backoff, config.clone()).await?;
+    let mut sink = start_sink(&mut backoff, &config).await?;
 
     while let Some(item_result) = stream.next().await {
         match item_result {
-            Ok(item) => {
-                match serde_json::from_slice::<Operation>(item.as_ref()) {
-                    Ok(operation) => {
-                        trace!(?operation);
-                        // Retry sending the operation to the sink if it fails
-                        while let Err(e) = sink.send(serde_json::from_slice(item.as_ref())?).await {
-                            error!("Error sending operation to sink: {}", e);
-                            sink = start_sink(&mut backoff, config.clone()).await?;
-                        }
-                    }
-                    Err(err) => {
-                        error!("Failed to deserialize operation: {}", err);
-                        continue;
+            Ok(item) => match serde_json::from_slice::<Operation>(item.as_ref()) {
+                Ok(operation) => {
+                    trace!(?operation);
+                    while let Err(e) = sink.send(operation.clone()).await {
+                        error!("Error sending operation to sink: {}", e);
+                        sink = start_sink(&mut backoff, &config).await?;
                     }
                 }
-            }
+                Err(err) => {
+                    error!("Failed to deserialize operation: {}", err);
+                    backoff_and_wait(&mut backoff).await?;
+                    continue;
+                }
+            },
             Err(err) => {
                 error!("Error reading from stream: {}", err);
-                // Handle backoff retries for stream errors
                 backoff_and_wait(&mut backoff).await?;
             }
         }
@@ -76,12 +73,13 @@ async fn backoff_and_wait(backoff: &mut ExponentialBackoff) -> Result<()> {
 
 async fn start_sink(
     backoff: &mut ExponentialBackoff,
-    config: SqlConfig,
+    config: &SqlConfig,
 ) -> Result<LocalBoxSink<Operation>> {
     loop {
-        match SqlSink::new(&config)?.connect(None).await {
+        match SqlSink::new(config)?.connect(None).await {
             Ok(sink) => {
                 // Reset backoff on a successful connection and return the sink
+                backoff.reset();
                 return Ok(sink);
             }
             Err(err) => {
