@@ -7,6 +7,9 @@ mod upsert;
 
 use std::time::Duration;
 
+use adaptive_backoff::prelude::{
+    Backoff, BackoffBuilder, ExponentialBackoff, ExponentialBackoffBuilder,
+};
 use anyhow::{anyhow, Result};
 use config::SqlConfig;
 use futures::{SinkExt, StreamExt};
@@ -14,7 +17,6 @@ use futures::{SinkExt, StreamExt};
 use fluvio_connector_common::{
     connector,
     consumer::ConsumerStream,
-    future::retry::ExponentialBackoff,
     tracing::{error, trace, warn},
     LocalBoxSink, Sink,
 };
@@ -27,49 +29,73 @@ const BACKOFF_MAX: Duration = Duration::from_secs(3600 * 24);
 
 #[connector(sink)]
 async fn start(config: SqlConfig, mut stream: impl ConsumerStream) -> Result<()> {
-    let mut sink = start_sink(config).await?;
-    while let Some(item) = stream.next().await {
-        let operation: Operation = serde_json::from_slice(item?.as_ref())?;
-        trace!(?operation);
-        sink.send(operation).await?;
+    let mut backoff = backoff_init()?;
+    let mut sink = start_sink(&mut backoff, config.clone()).await?;
+
+    while let Some(item_result) = stream.next().await {
+        match item_result {
+            Ok(item) => {
+                match serde_json::from_slice::<Operation>(item.as_ref()) {
+                    Ok(operation) => {
+                        trace!(?operation);
+                        // Retry sending the operation to the sink if it fails
+                        while let Err(e) = sink.send(serde_json::from_slice(item.as_ref())?).await {
+                            error!("Error sending operation to sink: {}", e);
+                            sink = start_sink(&mut backoff, config.clone()).await?;
+                        }
+                    }
+                    Err(err) => {
+                        error!("Failed to deserialize operation: {}", err);
+                        continue;
+                    }
+                }
+            }
+            Err(err) => {
+                error!("Error reading from stream: {}", err);
+                // Handle backoff retries for stream errors
+                backoff_and_wait(&mut backoff).await?;
+            }
+        }
     }
 
     Ok(())
 }
 
-async fn start_sink(config: SqlConfig) -> Result<LocalBoxSink<Operation>> {
-    let mut backoff = backoff_init()?;
+async fn backoff_and_wait(backoff: &mut ExponentialBackoff) -> Result<()> {
+    let wait = backoff.wait();
+    if wait < BACKOFF_MAX {
+        warn!("Retrying in {}", humantime::format_duration(wait));
+        async_std::task::sleep(wait).await;
+        Ok(())
+    } else {
+        let err_msg = "Max retry wait time exceeded, shutting down";
+        error!(err_msg);
+        Err(anyhow!(err_msg))
+    }
+}
+
+async fn start_sink(
+    backoff: &mut ExponentialBackoff,
+    config: SqlConfig,
+) -> Result<LocalBoxSink<Operation>> {
     loop {
-        let Some(wait) = backoff.next() else {
-            // not currently possible, but if backoff strategy is changed later
-            // this could kick in
-            let msg = "Retry backoff exhausted";
-            error!(msg);
-            return Err(anyhow!(msg));
-        };
-        if wait >= BACKOFF_MAX {
-            // max retry set to 24hrs
-            error!("Max retry reached");
-            continue;
-        }
-        let sink = match SqlSink::new(&config)?.connect(None).await {
-            Ok(sink) => sink,
-            Err(err) => {
-                warn!(
-                    "Error connecting to sink: \"{}\", reconnecting in {}.",
-                    err,
-                    humantime::format_duration(wait)
-                );
-                async_std::task::sleep(wait).await;
-                continue; // loop and retry
+        match SqlSink::new(&config)?.connect(None).await {
+            Ok(sink) => {
+                // Reset backoff on a successful connection and return the sink
+                return Ok(sink);
             }
-        };
-        // reset the backoff on successful connect
-        return Ok(sink);
+            Err(err) => {
+                error!("Error connecting to sink: \"{}\".", err,);
+                backoff_and_wait(backoff).await?;
+            }
+        }
     }
 }
 
 fn backoff_init() -> Result<ExponentialBackoff> {
-    let bmin: u64 = BACKOFF_MIN.as_millis().try_into()?;
-    Ok(ExponentialBackoff::from_millis(bmin).max_delay(BACKOFF_MAX))
+    ExponentialBackoffBuilder::default()
+        .factor(1.1)
+        .min(BACKOFF_MIN)
+        .max(BACKOFF_MAX)
+        .build()
 }

@@ -8,6 +8,7 @@ authors = ["Fluvio Contributors <team@fluvio.io>"]
 description = "A Fluvio connector that sends records to SQL database"
 
 [dependencies]
+adaptive_backoff = "0.2.1"
 anyhow = { version = "1.0" }
 async-std = { version = "1.13",  default-features = false, features = ["attributes"]}
 async-trait = { version = "0.1", default-features = false}
