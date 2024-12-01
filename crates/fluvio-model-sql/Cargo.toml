@@ -8,4 +8,4 @@ publish = false
 description = "The data model intended for using inside SQL connector"
 
 [dependencies]
-serde = { version = "1", default-features = false, features = ["derive", "std"] }
+serde = { workspace = true, default-features = false, features = ["derive", "std"] }

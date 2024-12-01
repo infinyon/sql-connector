@@ -8,21 +8,22 @@ authors = ["Fluvio Contributors <team@fluvio.io>"]
 description = "A Fluvio connector that sends records to SQL database"
 
 [dependencies]
-adaptive_backoff = "0.2.1"
-anyhow = { version = "1.0" }
-async-std = { version = "1.13",  default-features = false, features = ["attributes"]}
-async-trait = { version = "0.1", default-features = false}
-chrono = { version = "0.4", features = ["serde"], default-features = false }
-futures = { version = "0.3", default-features = false }
-itertools = "0.13"
-rust_decimal = { version = "1.36", default-features = false }
-serde = { version = "1.0", default-features = false, features = ["derive"]}
-serde_json = { version = "1", default-features = false }
-sqlx = { version = "0.8.2", features = [ "runtime-async-std-rustls", "postgres", "sqlite", "json", "any", "rust_decimal", "chrono", "uuid" ] }
-url = { version = "2.5", default-features = false, features = ["serde"] }
-uuid = { version = "1.11", default-features = false }
+adaptive_backoff = { workspace = true }
+anyhow = { workspace = true }
+async-std = { workspace = true, default-features = false, features = ["attributes"] }
+async-trait = { workspace = true, default-features = false }
+chrono = { workspace = true, features = ["serde"], default-features = false }
+futures = { workspace = true, default-features = false }
+humantime = { workspace = true }
+itertools = { workspace = true }
+rust_decimal = { workspace = true, default-features = false }
+serde = { workspace = true, default-features = false, features = ["derive"] }
+serde_json = { workspace = true, default-features = false }
+sqlx = { workspace = true, features = ["runtime-async-std-rustls", "postgres", "sqlite", "json", "any", "rust_decimal", "chrono", "uuid"] }
+url = { workspace = true, default-features = false, features = ["serde"] }
+uuid = { workspace = true, default-features = false }
 
-fluvio-model-sql = { path = "../fluvio-model-sql" }
+
+fluvio-model-sql = { workspace = true }
 fluvio = { workspace = true }
 fluvio-connector-common = { workspace = true, features = ["derive"]}
-humantime = "2.1.0"
