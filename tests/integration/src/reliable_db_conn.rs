@@ -10,14 +10,14 @@ use crate::utils::{
     read_from_postgres,
 };
 
-const TABLE: &str = "test_postgres_consumer_offsets";
+const TABLE: &str = "test_reliable_db_conn";
 static CREATE_TABLE: Lazy<String> =
     Lazy::new(|| format!("CREATE TABLE {TABLE} (device_id int, record json)"));
 
 pub(crate) async fn test(ctx: &mut TestContext) {
     // given
-    info!("running 'test_postgres_consumer_offsets' test");
-    let config_path = new_config_path("test_postgres_consumer_offsets.yaml").unwrap();
+    info!("running 'test_reliable_db_conn' test");
+    let config_path = new_config_path("test_reliable_db_conn.yaml").unwrap();
     sqlx::query(&CREATE_TABLE)
         .execute(&mut (ctx.pg_conn))
         .await
@@ -43,8 +43,8 @@ pub(crate) async fn test(ctx: &mut TestContext) {
     sleep(Duration::from_secs(3)).await;
 
     // when
-    info!("shutting down connector");
-    utils::cdk::cdk_deploy_shutdown(connector_name).unwrap();
+    info!("stoping db");
+    utils::db::stop_postgres(&ctx.docker).await.unwrap();
 
     info!("producing more records with connector down");
     sleep(Duration::from_secs(3)).await;
@@ -52,11 +52,10 @@ pub(crate) async fn test(ctx: &mut TestContext) {
     produce_to_fluvio(&ctx.fluvio, &config.meta.topic, records)
         .await
         .unwrap();
+    sleep(Duration::from_secs(3)).await;
 
-    info!("restarting connector");
-    utils::cdk::cdk_deploy_start(&config_path, None)
-        .await
-        .unwrap();
+    info!("restarting db");
+    utils::db::start_postgres(&ctx.docker).await.unwrap();
     let records = generate_raw_records(TABLE, 6, 8).unwrap();
     produce_to_fluvio(&ctx.fluvio, &config.meta.topic, records)
         .await
@@ -70,6 +69,7 @@ pub(crate) async fn test(ctx: &mut TestContext) {
     utils::fluvio_conn::remove_topic(&ctx.fluvio, &config.meta.topic)
         .await
         .unwrap();
+
     sleep(Duration::from_secs(3)).await;
 
     let read_result = read_from_postgres(TABLE, 8).await;
@@ -88,12 +88,12 @@ pub(crate) async fn test(ctx: &mut TestContext) {
         .await
         .unwrap()
         .into_iter()
-        .find(|c| c.consumer_id.eq("test-postgres-consumer-offsets"));
+        .find(|c| c.consumer_id.eq("test-reliable-db"));
 
     // then
     assert!(consumer.is_some());
     assert!(consumer.unwrap().offset >= 0);
-    info!("test 'test_postgres_consumer_offsets' passed");
+    info!("test 'test_reliable_db_conn' passed");
 }
 
 #[derive(sqlx::FromRow, Debug)]

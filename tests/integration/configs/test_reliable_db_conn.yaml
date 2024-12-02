@@ -1,0 +1,15 @@
+meta:
+  name: test-reliable-db
+  type: sql-sink
+  version: latest
+  topic: test-reliable-db
+  consumer:
+    id: test-reliable-db
+    offset:
+      strategy: auto
+      start: beginning
+      flush-period:
+        secs: 10
+        nanos: 0
+sql:
+  url: "postgresql://pguser:passpass@127.0.0.1:5432/pguser"

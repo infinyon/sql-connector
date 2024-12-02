@@ -13,3 +13,10 @@ pub(crate) async fn connect_docker() -> Result<Docker> {
     );
     Ok(docker)
 }
+
+pub(crate) async fn stop_container(docker: &Docker, container_name: &str) -> Result<()> {
+    info!("stopping container: {}", container_name);
+    docker.stop_container(container_name, None).await?;
+    info!("container stopped: {}", container_name);
+    Ok(())
+}

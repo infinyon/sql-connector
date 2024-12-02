@@ -13,6 +13,8 @@ use sqlx::{Connection, PgConnection};
 
 use fluvio_future::retry::{retry, ExponentialBackoff};
 
+use crate::utils::docker_conn;
+
 const POSTGRES_IMAGE: &str = "postgres:15.2";
 const POSTGRES_HOST_PORT: &str = "5432";
 const POSTGRES_PASSWORD: &str = "passpass";
@@ -71,6 +73,27 @@ pub(crate) async fn run_postgres(docker: &Docker) -> Result<PgConnection> {
         .await?;
 
     info!("postgres container created, waiting for readiness");
+    let conn = retry(ExponentialBackoff::from_millis(10).take(6), || {
+        connect_postgres()
+    })
+    .await?;
+
+    info!("postgres container started with {POSTGRES_IMAGE} image");
+
+    Ok(conn)
+}
+
+pub(crate) async fn stop_postgres(docker: &Docker) -> Result<()> {
+    docker_conn::stop_container(docker, "postgres").await?;
+    info!("postgres container stopped");
+    Ok(())
+}
+
+pub(crate) async fn start_postgres(docker: &Docker) -> Result<PgConnection> {
+    let _ = &docker
+        .start_container("postgres", None::<StartContainerOptions<String>>)
+        .await?;
+    info!("postgres container started, waiting for readiness");
     let conn = retry(ExponentialBackoff::from_millis(10).take(6), || {
         connect_postgres()
     })
