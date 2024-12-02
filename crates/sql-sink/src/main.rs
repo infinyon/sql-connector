@@ -17,7 +17,7 @@ use futures::{SinkExt, StreamExt};
 use fluvio_connector_common::{
     connector,
     consumer::ConsumerStream,
-    tracing::{error, trace, warn},
+    tracing::{error, info, trace, warn},
     LocalBoxSink, Sink,
 };
 use fluvio_model_sql::Operation;
@@ -25,12 +25,14 @@ use fluvio_model_sql::Operation;
 use sink::SqlSink;
 
 const BACKOFF_MIN: Duration = Duration::from_secs(1);
-const BACKOFF_MAX: Duration = Duration::from_secs(3600 * 24);
+const BACKOFF_MAX: Duration = Duration::from_secs(600);
 
 #[connector(sink)]
 async fn start(config: SqlConfig, mut stream: impl ConsumerStream) -> Result<()> {
     let mut backoff = backoff_init()?;
     let mut sink = start_sink(&mut backoff, &config).await?;
+
+    info!("Starting to process records");
 
     while let Some(item_result) = stream.next().await {
         match item_result {
@@ -38,14 +40,14 @@ async fn start(config: SqlConfig, mut stream: impl ConsumerStream) -> Result<()>
                 Ok(operation) => {
                     trace!(?operation);
                     while let Err(e) = sink.send(operation.clone()).await {
-                        error!("Error sending operation to sink: {}", e);
+                        error!("Error trying to send to db: {}", e);
                         sink = start_sink(&mut backoff, &config).await?;
                     }
+                    backoff.reset();
                 }
                 Err(err) => {
                     error!("Failed to deserialize operation: {}", err);
                     backoff_and_wait(&mut backoff).await?;
-                    continue;
                 }
             },
             Err(err) => {
@@ -55,13 +57,18 @@ async fn start(config: SqlConfig, mut stream: impl ConsumerStream) -> Result<()>
         }
     }
 
+    info!("Connection dropped, shutting down");
+
     Ok(())
 }
 
 async fn backoff_and_wait(backoff: &mut ExponentialBackoff) -> Result<()> {
     let wait = backoff.wait();
     if wait < BACKOFF_MAX {
-        warn!("Retrying in {}", humantime::format_duration(wait));
+        warn!(
+            "Waiting {} before next attempting to db",
+            humantime::format_duration(wait)
+        );
         async_std::task::sleep(wait).await;
         Ok(())
     } else {

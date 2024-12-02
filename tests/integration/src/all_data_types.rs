@@ -35,7 +35,7 @@ static CREATE_TABLE: Lazy<String> = Lazy::new(|| {
     )
 });
 
-pub(crate) async fn test_postgres_all_data_types(ctx: &mut TestContext) {
+pub(crate) async fn test(ctx: &mut TestContext) {
     #[derive(sqlx::FromRow, Debug)]
     #[allow(dead_code)]
     struct TestRecord {

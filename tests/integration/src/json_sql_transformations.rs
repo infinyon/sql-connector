@@ -8,7 +8,7 @@ use crate::utils::{
 
 const TABLE: &str = "test_postgres_with_json_sql_transformations";
 
-pub(crate) async fn test_postgres_with_json_sql_transformations(ctx: &mut TestContext) {
+pub(crate) async fn test(ctx: &mut TestContext) {
     // given
     info!("running 'test_postgres_with_json_sql_transformations' test");
     let config_path = new_config_path("test_postgres_with_json_sql_transformations.yaml").unwrap();
