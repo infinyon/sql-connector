@@ -3840,6 +3840,7 @@ dependencies = [
  "fluvio-model-sql",
  "futures",
  "humantime",
+ "humantime-serde",
  "itertools 0.13.0",
  "rust_decimal",
  "serde",

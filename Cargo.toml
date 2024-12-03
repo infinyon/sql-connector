@@ -48,5 +48,3 @@ fluvio-smartmodule = { git = "https://github.com/infinyon/fluvio", branch = "fix
 
 # Internal dependencies
 fluvio-model-sql = { path = "crates/fluvio-model-sql" }
-
-

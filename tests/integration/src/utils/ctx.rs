@@ -54,4 +54,14 @@ impl TestContext {
         info!("environment teardown finished");
         Ok(())
     }
+
+    pub async fn start_postgres(&mut self) -> Result<()> {
+        self.pg_conn = db::start_postgres(&self.docker).await?;
+        Ok(())
+    }
+
+    pub async fn stop_postgres(&mut self) -> Result<()> {
+        db::stop_postgres(&self.docker).await?;
+        Ok(())
+    }
 }
