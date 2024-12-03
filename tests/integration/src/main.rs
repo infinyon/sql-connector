@@ -1,5 +1,6 @@
 mod all_data_types;
 mod consumer_offsets;
+mod fail_db_conn;
 mod json_sql_transformations;
 mod reliable_db_conn;
 mod utils;
@@ -27,4 +28,5 @@ async fn run_tests(ctx: &mut utils::ctx::TestContext) {
     json_sql_transformations::test(ctx).await;
     consumer_offsets::test(ctx).await;
     reliable_db_conn::test(ctx).await;
+    fail_db_conn::test(ctx).await;
 }

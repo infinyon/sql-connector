@@ -39,12 +39,11 @@ pub(crate) async fn test(ctx: &mut TestContext) {
     produce_to_fluvio(&ctx.fluvio, &config.meta.topic, records)
         .await
         .unwrap();
-    info!("waiting for connector to catch up");
     sleep(Duration::from_secs(3)).await;
 
     // when
     info!("stoping db");
-    utils::db::stop_postgres(&ctx.docker).await.unwrap();
+    ctx.stop_postgres().await.unwrap();
 
     info!("producing more records with connector down");
     sleep(Duration::from_secs(3)).await;
@@ -55,7 +54,7 @@ pub(crate) async fn test(ctx: &mut TestContext) {
     sleep(Duration::from_secs(3)).await;
 
     info!("restarting db");
-    utils::db::start_postgres(&ctx.docker).await.unwrap();
+    ctx.start_postgres().await.unwrap();
     let records = generate_raw_records(TABLE, 6, 8).unwrap();
     produce_to_fluvio(&ctx.fluvio, &config.meta.topic, records)
         .await

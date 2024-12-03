@@ -1,0 +1,17 @@
+meta:
+  name: test-fail-db
+  type: sql-sink
+  version: latest
+  topic: test-fail-db
+  consumer:
+    id: test-fail-db
+    offset:
+      strategy: auto
+      start: beginning
+      flush-period:
+        secs: 10
+        nanos: 0
+sql:
+  url: "postgresql://pguser:passpass@127.0.0.1:5432/pguser"
+  backoff_min: 1s
+  backoff_max: 10s
