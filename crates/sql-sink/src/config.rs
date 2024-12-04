@@ -4,6 +4,7 @@ use fluvio_connector_common::{connector, secret::SecretString};
 
 #[derive(Debug, Clone)]
 #[connector(config, name = "sql")]
+#[serde(rename_all = "kebab-case")]
 pub(crate) struct SqlConfig {
     /// The SQL connection string
     pub url: SecretString,
