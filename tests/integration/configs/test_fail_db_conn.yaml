@@ -13,5 +13,5 @@ meta:
         nanos: 0
 sql:
   url: "postgresql://pguser:passpass@127.0.0.1:5432/pguser"
-  backoff_min: 1s
-  backoff_max: 10s
+  backoff-min: 1s
+  backoff-max: 10s
