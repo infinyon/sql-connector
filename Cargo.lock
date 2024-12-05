@@ -1360,7 +1360,7 @@ dependencies = [
 [[package]]
 name = "fluvio"
 version = "0.24.1"
-source = "git+https://github.com/infinyon/fluvio?branch=fix_shutdown_cdk#ddcb0638981b27a79125ff2764d4935204771e70"
+source = "git+https://github.com/infinyon/fluvio?branch=fix_shutdown_cdk_future#2e8499cd79da7825f24e3bf7103d1257c4d4241e"
 dependencies = [
  "anyhow",
  "async-channel 1.9.0",
@@ -1396,7 +1396,7 @@ dependencies = [
 [[package]]
 name = "fluvio-compression"
 version = "0.3.4"
-source = "git+https://github.com/infinyon/fluvio?branch=fix_shutdown_cdk#ddcb0638981b27a79125ff2764d4935204771e70"
+source = "git+https://github.com/infinyon/fluvio?branch=fix_shutdown_cdk_future#2e8499cd79da7825f24e3bf7103d1257c4d4241e"
 dependencies = [
  "bytes",
  "flate2",
@@ -1411,7 +1411,7 @@ dependencies = [
 [[package]]
 name = "fluvio-connector-common"
 version = "0.0.0"
-source = "git+https://github.com/infinyon/fluvio?branch=fix_shutdown_cdk#ddcb0638981b27a79125ff2764d4935204771e70"
+source = "git+https://github.com/infinyon/fluvio?branch=fix_shutdown_cdk_future#2e8499cd79da7825f24e3bf7103d1257c4d4241e"
 dependencies = [
  "anyhow",
  "async-channel 1.9.0",
@@ -1428,13 +1428,14 @@ dependencies = [
  "serde",
  "serde_json",
  "serde_yaml",
+ "tokio",
  "tracing",
 ]
 
 [[package]]
 name = "fluvio-connector-derive"
 version = "0.0.0"
-source = "git+https://github.com/infinyon/fluvio?branch=fix_shutdown_cdk#ddcb0638981b27a79125ff2764d4935204771e70"
+source = "git+https://github.com/infinyon/fluvio?branch=fix_shutdown_cdk_future#2e8499cd79da7825f24e3bf7103d1257c4d4241e"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -1444,7 +1445,7 @@ dependencies = [
 [[package]]
 name = "fluvio-connector-package"
 version = "0.0.0"
-source = "git+https://github.com/infinyon/fluvio?branch=fix_shutdown_cdk#ddcb0638981b27a79125ff2764d4935204771e70"
+source = "git+https://github.com/infinyon/fluvio?branch=fix_shutdown_cdk_future#2e8499cd79da7825f24e3bf7103d1257c4d4241e"
 dependencies = [
  "anyhow",
  "bytesize",
@@ -1463,8 +1464,8 @@ dependencies = [
 
 [[package]]
 name = "fluvio-controlplane-metadata"
-version = "0.30.0"
-source = "git+https://github.com/infinyon/fluvio?branch=fix_shutdown_cdk#ddcb0638981b27a79125ff2764d4935204771e70"
+version = "0.30.1"
+source = "git+https://github.com/infinyon/fluvio?branch=fix_shutdown_cdk_future#2e8499cd79da7825f24e3bf7103d1257c4d4241e"
 dependencies = [
  "anyhow",
  "base64 0.22.1",
@@ -1522,7 +1523,7 @@ dependencies = [
 [[package]]
 name = "fluvio-protocol"
 version = "0.12.0"
-source = "git+https://github.com/infinyon/fluvio?branch=fix_shutdown_cdk#ddcb0638981b27a79125ff2764d4935204771e70"
+source = "git+https://github.com/infinyon/fluvio?branch=fix_shutdown_cdk_future#2e8499cd79da7825f24e3bf7103d1257c4d4241e"
 dependencies = [
  "bytes",
  "cfg-if",
@@ -1544,7 +1545,7 @@ dependencies = [
 [[package]]
 name = "fluvio-protocol-derive"
 version = "0.5.4"
-source = "git+https://github.com/infinyon/fluvio?branch=fix_shutdown_cdk#ddcb0638981b27a79125ff2764d4935204771e70"
+source = "git+https://github.com/infinyon/fluvio?branch=fix_shutdown_cdk_future#2e8499cd79da7825f24e3bf7103d1257c4d4241e"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -1555,7 +1556,7 @@ dependencies = [
 [[package]]
 name = "fluvio-sc-schema"
 version = "0.25.0"
-source = "git+https://github.com/infinyon/fluvio?branch=fix_shutdown_cdk#ddcb0638981b27a79125ff2764d4935204771e70"
+source = "git+https://github.com/infinyon/fluvio?branch=fix_shutdown_cdk_future#2e8499cd79da7825f24e3bf7103d1257c4d4241e"
 dependencies = [
  "anyhow",
  "fluvio-controlplane-metadata",
@@ -1571,7 +1572,7 @@ dependencies = [
 [[package]]
 name = "fluvio-smartengine"
 version = "0.8.3"
-source = "git+https://github.com/infinyon/fluvio?branch=fix_shutdown_cdk#ddcb0638981b27a79125ff2764d4935204771e70"
+source = "git+https://github.com/infinyon/fluvio?branch=fix_shutdown_cdk_future#2e8499cd79da7825f24e3bf7103d1257c4d4241e"
 dependencies = [
  "anyhow",
  "cfg-if",
@@ -1592,7 +1593,7 @@ dependencies = [
 [[package]]
 name = "fluvio-smartmodule"
 version = "0.8.0"
-source = "git+https://github.com/infinyon/fluvio?branch=fix_shutdown_cdk#ddcb0638981b27a79125ff2764d4935204771e70"
+source = "git+https://github.com/infinyon/fluvio?branch=fix_shutdown_cdk_future#2e8499cd79da7825f24e3bf7103d1257c4d4241e"
 dependencies = [
  "eyre",
  "fluvio-protocol",
@@ -1604,7 +1605,7 @@ dependencies = [
 [[package]]
 name = "fluvio-smartmodule-derive"
 version = "0.6.4"
-source = "git+https://github.com/infinyon/fluvio?branch=fix_shutdown_cdk#ddcb0638981b27a79125ff2764d4935204771e70"
+source = "git+https://github.com/infinyon/fluvio?branch=fix_shutdown_cdk_future#2e8499cd79da7825f24e3bf7103d1257c4d4241e"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -1614,7 +1615,7 @@ dependencies = [
 [[package]]
 name = "fluvio-socket"
 version = "0.15.0"
-source = "git+https://github.com/infinyon/fluvio?branch=fix_shutdown_cdk#ddcb0638981b27a79125ff2764d4935204771e70"
+source = "git+https://github.com/infinyon/fluvio?branch=fix_shutdown_cdk_future#2e8499cd79da7825f24e3bf7103d1257c4d4241e"
 dependencies = [
  "async-channel 1.9.0",
  "async-lock 3.4.0",
@@ -1639,7 +1640,7 @@ dependencies = [
 [[package]]
 name = "fluvio-spu-schema"
 version = "0.17.0"
-source = "git+https://github.com/infinyon/fluvio?branch=fix_shutdown_cdk#ddcb0638981b27a79125ff2764d4935204771e70"
+source = "git+https://github.com/infinyon/fluvio?branch=fix_shutdown_cdk_future#2e8499cd79da7825f24e3bf7103d1257c4d4241e"
 dependencies = [
  "bytes",
  "derive_builder",
@@ -1656,8 +1657,8 @@ dependencies = [
 
 [[package]]
 name = "fluvio-stream-dispatcher"
-version = "0.13.6"
-source = "git+https://github.com/infinyon/fluvio?branch=fix_shutdown_cdk#ddcb0638981b27a79125ff2764d4935204771e70"
+version = "0.13.7"
+source = "git+https://github.com/infinyon/fluvio?branch=fix_shutdown_cdk_future#2e8499cd79da7825f24e3bf7103d1257c4d4241e"
 dependencies = [
  "anyhow",
  "async-channel 1.9.0",
@@ -1680,7 +1681,7 @@ dependencies = [
 [[package]]
 name = "fluvio-stream-model"
 version = "0.11.4"
-source = "git+https://github.com/infinyon/fluvio?branch=fix_shutdown_cdk#ddcb0638981b27a79125ff2764d4935204771e70"
+source = "git+https://github.com/infinyon/fluvio?branch=fix_shutdown_cdk_future#2e8499cd79da7825f24e3bf7103d1257c4d4241e"
 dependencies = [
  "async-lock 3.4.0",
  "event-listener 5.3.1",
@@ -1693,7 +1694,7 @@ dependencies = [
 [[package]]
 name = "fluvio-types"
 version = "0.5.2"
-source = "git+https://github.com/infinyon/fluvio?branch=fix_shutdown_cdk#ddcb0638981b27a79125ff2764d4935204771e70"
+source = "git+https://github.com/infinyon/fluvio?branch=fix_shutdown_cdk_future#2e8499cd79da7825f24e3bf7103d1257c4d4241e"
 dependencies = [
  "event-listener 5.3.1",
  "serde",
