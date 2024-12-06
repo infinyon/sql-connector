@@ -36,10 +36,10 @@ uuid = { version = "1.11", default-features = false }
 
 
 # Fluvio dependencies
-fluvio = { git = "https://github.com/infinyon/fluvio", branch = "fix_shutdown_cdk" }
-fluvio-connector-common = { git = "https://github.com/infinyon/fluvio", branch = "fix_shutdown_cdk" }
+fluvio = { git = "https://github.com/infinyon/fluvio", branch = "fix_shutdown_cdk_future" }
+fluvio-connector-common = { git = "https://github.com/infinyon/fluvio", branch = "fix_shutdown_cdk_future" }
 fluvio-future = "0.7.0"
-fluvio-smartmodule = { git = "https://github.com/infinyon/fluvio", branch = "fix_shutdown_cdk" }
+fluvio-smartmodule = { git = "https://github.com/infinyon/fluvio", branch = "fix_shutdown_cdk_future" }
 
 
 # fluvio = { path = "../../fluvio/crates/fluvio/" }
