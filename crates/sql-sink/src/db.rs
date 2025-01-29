@@ -8,7 +8,10 @@ use sqlx::{
 };
 
 use fluvio_connector_common::tracing::{debug, error};
-use fluvio_model_sql::{Insert as InsertData, Operation, Upsert as UpsertData, Value};
+use fluvio_model_sql::{
+    BatchInsert as BatchInsertData, BatchUpsert as BatchUpsertData, Insert as InsertData,
+    Operation, Upsert as UpsertData, Value,
+};
 
 use crate::bind::Bind;
 use crate::insert::Insert;
@@ -35,9 +38,13 @@ impl Db {
     }
 
     pub async fn execute(&mut self, operation: &Operation) -> anyhow::Result<()> {
+        // fluvio_connector_common::tracing::info!("operation: {:?}", operation);
         match &operation {
+            Operation::UnInit => Ok(()),
             Operation::Insert(data) => self.insert(data).await,
             Operation::Upsert(data) => self.upsert(data).await,
+            Operation::BatchInsert(data) => self.batch_insert(data).await,
+            Operation::BatchUpsert(data) => self.batch_upsert(data).await,
         }
     }
 
@@ -62,6 +69,29 @@ impl Db {
         }
     }
 
+    async fn batch_insert(&mut self, data: &BatchInsertData) -> anyhow::Result<()> {
+        match self {
+            Self::Postgres(conn) => {
+                do_batch_insert::<Postgres, &mut PgConnection, Self>(
+                    conn.as_mut(),
+                    &data.table,
+                    &data.columns,
+                    &data.values,
+                )
+                .await
+            }
+            Self::Sqlite(conn) => {
+                do_batch_insert::<Sqlite, &mut SqliteConnection, Self>(
+                    conn.as_mut(),
+                    &data.table,
+                    &data.columns,
+                    &data.values,
+                )
+                .await
+            }
+        }
+    }
+
     async fn upsert(&mut self, data: &UpsertData) -> anyhow::Result<()> {
         match self {
             Self::Postgres(conn) => {
@@ -77,6 +107,31 @@ impl Db {
                 do_upsert::<Sqlite, &mut SqliteConnection, Self>(
                     conn.as_mut(),
                     &data.table,
+                    &data.values,
+                    &data.uniq_idx,
+                )
+                .await
+            }
+        }
+    }
+
+    async fn batch_upsert(&mut self, data: &BatchUpsertData) -> anyhow::Result<()> {
+        match self {
+            Self::Postgres(conn) => {
+                do_batch_upsert::<Postgres, &mut PgConnection, Self>(
+                    conn.as_mut(),
+                    &data.table,
+                    &data.columns,
+                    &data.values,
+                    &data.uniq_idx,
+                )
+                .await
+            }
+            Self::Sqlite(conn) => {
+                do_batch_upsert::<Sqlite, &mut SqliteConnection, Self>(
+                    conn.as_mut(),
+                    &data.table,
+                    &data.columns,
                     &data.values,
                     &data.uniq_idx,
                 )
@@ -132,6 +187,37 @@ where
     Ok(())
 }
 
+async fn do_batch_insert<'c, DB, E, I>(
+    conn: E,
+    table: &str,
+    columns: &[String],
+    batch_values: &[Vec<Value>],
+) -> anyhow::Result<()>
+where
+    DB: Database,
+    for<'q> <DB>::Arguments<'q>: IntoArguments<'q, DB>,
+    E: Executor<'c, Database = DB>,
+    I: Insert<DB> + Bind<DB>,
+{
+    let sql = I::insert_batch_query(table, columns, batch_values);
+    fluvio_connector_common::tracing::info!("sending");
+    debug!(sql, "sending");
+    let mut query = sqlx::query(&sql);
+    for values in batch_values {
+        for value in values {
+            query = match I::bind_value(query, value) {
+                Ok(q) => q,
+                Err(err) => {
+                    error!("Unable to bind {:?}. Reason: {:?}", values, err);
+                    return Err(err);
+                }
+            }
+        }
+    }
+    query.execute(conn).await?;
+    Ok(())
+}
+
 async fn do_upsert<'c, DB, E, I>(
     conn: E,
     table: &str,
@@ -153,6 +239,37 @@ where
             Err(err) => {
                 error!("Unable to bind {:?}. Reason: {:?}", value, err);
                 return Err(err);
+            }
+        }
+    }
+    query.execute(conn).await?;
+    Ok(())
+}
+
+async fn do_batch_upsert<'c, DB, E, I>(
+    conn: E,
+    table: &str,
+    columns: &[String],
+    batch_values: &[Vec<Value>],
+    uniq_idx: &str,
+) -> anyhow::Result<()>
+where
+    DB: Database,
+    for<'q> <DB>::Arguments<'q>: IntoArguments<'q, DB>,
+    E: Executor<'c, Database = DB>,
+    I: Upsert<DB> + Bind<DB>,
+{
+    let sql = I::upsert_batch_query(table, columns, batch_values, uniq_idx);
+    fluvio_connector_common::tracing::info!(sql, "sending");
+    let mut query = sqlx::query(&sql);
+    for values in batch_values {
+        for value in values {
+            query = match I::bind_value(query, value) {
+                Ok(q) => q,
+                Err(err) => {
+                    error!("Unable to bind {:?}. Reason: {:?}", values, err);
+                    return Err(err);
+                }
             }
         }
     }
@@ -480,6 +597,51 @@ mod tests {
         let mut upsert = upsert;
         upsert.values[4].raw_value = "41".into();
         let operation = Operation::Upsert(upsert);
+
+        db.execute(&operation).await?;
+
+        let row = db.as_sqlite_conn().unwrap().fetch_one(SELECT).await?;
+        let int_col: i32 = row.get(4);
+        assert_eq!(int_col, 41);
+
+        Ok(())
+    }
+
+    #[async_std::test]
+    async fn test_batch_upsert_sqlite() -> anyhow::Result<()> {
+        init_logger();
+
+        let url = "sqlite::memory:";
+
+        let mut db = Db::connect(url).await?;
+
+        db.as_sqlite_conn()
+            .unwrap()
+            .execute(CREATE_TABLE_SQLITE)
+            .await?;
+
+        let insert = make_insert();
+        let batch_upsert = BatchUpsertData {
+            table: insert.table,
+            columns: insert.values.iter().map(|v| v.column.clone()).collect(),
+            values: vec![insert.values.clone(), insert.values],
+            uniq_idx: "uuid_col".into(),
+        };
+        let operation = Operation::BatchUpsert(batch_upsert.clone());
+
+        // second upsert should do nothing
+        for _ in 0..2 {
+            db.execute(&operation).await?;
+
+            let row = &db.as_sqlite_conn().unwrap().fetch_one(SELECT).await?;
+            check_row(row);
+        }
+
+        // update using upsert
+        let mut upsert = batch_upsert;
+        upsert.values[0][4].raw_value = "41".into();
+        upsert.values[1][4].raw_value = "41".into();
+        let operation = Operation::BatchUpsert(upsert);
 
         db.execute(&operation).await?;
 
