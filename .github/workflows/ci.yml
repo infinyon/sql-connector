@@ -97,7 +97,7 @@ jobs:
           echo foo | fluvio produce foobar
           fluvio consume foobar -B -d
       - name: Install wasm target
-        run: rustup target add wasm32-wasi
+        run: rustup target add wasm32-wasip1
       - name: Run Integration Test
         timeout-minutes: 30
         run: START_FLUVIO=false make integration_tests
