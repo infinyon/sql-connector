@@ -189,13 +189,16 @@ pub(crate) async fn read_from_postgres<R>(table: &str, count: usize) -> Result<V
 where
     R: for<'r> FromRow<'r, PgRow> + Unpin + Send,
 {
-    let result = retry(ExponentialBackoff::from_millis(10).take(5), || {
+    let result = retry(ExponentialBackoff::from_millis(100).take(5), || {
         let sql = format!("SELECT * FROM {table} LIMIT {count}");
         async move {
             let mut pg_conn = db::connect_postgres().await?;
             let result: Vec<R> = sqlx::query_as(&sql).fetch_all(&mut pg_conn).await?;
             if result.len() != count {
-                anyhow::bail!("not all expected records are ready yet");
+                anyhow::bail!(
+                    "not all expected records are ready yet, only {} records found",
+                    result.len()
+                );
             }
             Ok::<Vec<R>, anyhow::Error>(result)
         }

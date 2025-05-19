@@ -67,12 +67,14 @@ pub(crate) async fn test(ctx: &mut TestContext) {
     assert_eq!(connector_status.unwrap(), "Stopped");
 
     utils::cdk::cdk_deploy_shutdown(connector_name).unwrap();
-    utils::fluvio_conn::remove_topic(&ctx.fluvio, &config.meta.topic)
-        .await
-        .unwrap();
 
     info!("restarting db");
     ctx.start_postgres().await.unwrap();
 
     info!("test 'test_fail_db_conn' passed");
+
+    // cleanup
+    utils::fluvio_conn::remove_topic(&ctx.fluvio, &config.meta.topic)
+        .await
+        .unwrap();
 }

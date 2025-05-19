@@ -34,9 +34,7 @@ pub(crate) async fn test(ctx: &mut TestContext) {
     // when
     let read_result = read_from_postgres(TABLE, count).await;
     utils::cdk::cdk_deploy_shutdown(&config.meta.name).unwrap();
-    utils::fluvio_conn::remove_topic(&ctx.fluvio, &config.meta.topic)
-        .await
-        .unwrap();
+
     let received_records: Vec<TestRecord> = read_result.unwrap();
 
     // then
@@ -46,6 +44,11 @@ pub(crate) async fn test(ctx: &mut TestContext) {
         assert_eq!(record.record, json!({"device": { "device_id" : i }}));
     }
     info!("test 'test_postgres_with_json_sql_transformations' passed");
+
+    // cleanup
+    utils::fluvio_conn::remove_topic(&ctx.fluvio, &config.meta.topic)
+        .await
+        .unwrap();
 }
 
 #[derive(sqlx::FromRow, Debug)]
