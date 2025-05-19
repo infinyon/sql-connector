@@ -65,9 +65,6 @@ pub(crate) async fn test(ctx: &mut TestContext) {
     info!("connector: {connector_name}, status: {connector_status:?}");
 
     utils::cdk::cdk_deploy_shutdown(connector_name).unwrap();
-    utils::fluvio_conn::remove_topic(&ctx.fluvio, &config.meta.topic)
-        .await
-        .unwrap();
 
     sleep(Duration::from_secs(3)).await;
 
@@ -93,6 +90,11 @@ pub(crate) async fn test(ctx: &mut TestContext) {
     assert!(consumer.is_some());
     assert!(consumer.unwrap().offset >= 0);
     info!("test 'test_reliable_db_conn' passed");
+
+    // cleanup
+    utils::fluvio_conn::remove_topic(&ctx.fluvio, &config.meta.topic)
+        .await
+        .unwrap();
 }
 
 #[derive(sqlx::FromRow, Debug)]

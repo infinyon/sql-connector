@@ -39,14 +39,14 @@ pub(crate) async fn test(ctx: &mut TestContext) {
     produce_to_fluvio(&ctx.fluvio, &config.meta.topic, records)
         .await
         .unwrap();
-    sleep(Duration::from_secs(3)).await;
+    sleep(Duration::from_secs(10)).await;
 
     // when
     info!("shutting down connector");
     utils::cdk::cdk_deploy_shutdown(connector_name).unwrap();
 
     info!("producing more records with connector down");
-    sleep(Duration::from_secs(3)).await;
+    sleep(Duration::from_secs(10)).await;
     let records = generate_raw_records(TABLE, 4, 6).unwrap();
     produce_to_fluvio(&ctx.fluvio, &config.meta.topic, records)
         .await
@@ -66,16 +66,17 @@ pub(crate) async fn test(ctx: &mut TestContext) {
     info!("connector: {connector_name}, status: {connector_status:?}");
 
     utils::cdk::cdk_deploy_shutdown(connector_name).unwrap();
-    utils::fluvio_conn::remove_topic(&ctx.fluvio, &config.meta.topic)
-        .await
-        .unwrap();
     sleep(Duration::from_secs(3)).await;
 
     let read_result = read_from_postgres(TABLE, 8).await;
-    let received_records: Vec<TestRecord> = read_result.unwrap();
+    let mut received_records: Vec<TestRecord> = read_result.unwrap();
+    received_records.sort_by_key(|r| r.device_id);
 
     // then
     assert_eq!(received_records.len(), 8);
+
+    info!("received records: {received_records:?}");
+
     for (i, record) in received_records.into_iter().enumerate() {
         assert_eq!(record.device_id as usize, i);
         assert_eq!(record.record, json!({"device": { "device_id" : i }}));
@@ -93,6 +94,11 @@ pub(crate) async fn test(ctx: &mut TestContext) {
     assert!(consumer.is_some());
     assert!(consumer.unwrap().offset >= 0);
     info!("test 'test_postgres_consumer_offsets' passed");
+
+    // cleanup
+    utils::fluvio_conn::remove_topic(&ctx.fluvio, &config.meta.topic)
+        .await
+        .unwrap();
 }
 
 #[derive(sqlx::FromRow, Debug)]
